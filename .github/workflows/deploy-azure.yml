@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build API
-        run: pip install -r requirements.txt -t api/.python_packages/lib/site-packages
+        run: pip install -r api/requirements.txt -t api/.python_packages/lib/site-packages
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.API_WEBAPP_NAME }}
@@ -70,16 +70,16 @@ jobs:
           wait_for "${API}/openapi.json"
           wait_for "${UI}"
 
-          curl -fsS "${API}/api/work-items" -o items.json
-          python3 -c "import json; rows=json.load(open('items.json')); assert rows, 'seed data missing'; print(len(rows), 'work items served')"
+          curl -fsS "${API}/api/work-orders" -o items.json
+          python3 -c "import json; rows=json.load(open('items.json')); assert rows, 'seed data missing'; print(len(rows), 'rows served')"
 
-          created=$(curl -fsS -X POST "${API}/api/work-items" \
+          created=$(curl -fsS -X POST "${API}/api/work-orders" \
             -H 'content-type: application/json' \
-            -d '{"title":"Deployment smoke test","location":"CI"}')
+            -d '{"title": "Deployment smoke test"}')
           id=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['id'])" "$created")
-          curl -fsS -X PATCH "${API}/api/work-items/${id}" \
-            -H 'content-type: application/json' -d '{"status":"complete"}' > /dev/null
-          curl -fsS -X DELETE "${API}/api/work-items/${id}" > /dev/null
+          curl -fsS -X PATCH "${API}/api/work-orders/${id}" \
+            -H 'content-type: application/json' -d '{"status": "complete"}' > /dev/null
+          curl -fsS -X DELETE "${API}/api/work-orders/${id}" > /dev/null
           echo "CRUD round trip passed"
 
       - name: Record published links in README
@@ -96,7 +96,7 @@ jobs:
               f"| API | <{api}> |\n"
               f"| Swagger UI | <{api}/docs> |\n"
               f"| OpenAPI document | <{api}/openapi.json> |\n"
-              f"| Work item API | <{api}/api/work-items> |\n"
+              f"| Work Order API | <{api}/api/work-orders> |\n"
               f"| API health probe | <{api}/health> |\n\n"
               f"_Last published {stamp} by `deploy-azure.yml`. Smoke tests covered the health probe, "
               "the OpenAPI document, the UI, and a create/update/delete round trip._\n"
