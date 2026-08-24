@@ -1,0 +1,97 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build API
+        run: pip install -r requirements.txt -t api/.python_packages/lib/site-packages
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.API_WEBAPP_NAME }}
+          package: api
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build UI
+        working-directory: ui
+        run: npm install && npm run build --if-present
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.UI_WEBAPP_NAME }}
+          package: ui
+
+      - name: Smoke test the published API
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS "https://${{ vars.API_WEBAPP_NAME }}.azurewebsites.net/health"; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "API did not become healthy" >&2
+          exit 1
+
+      - name: Record published links in README
+        run: |
+          python - <<'PY'
+          import os, re, datetime
+          api = f"https://{os.environ['API_APP']}.azurewebsites.net"
+          ui = f"https://{os.environ['UI_APP']}.azurewebsites.net"
+          stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+          block = (
+              "<!-- agentic-sdlc:published-links:start -->\n"
+              "| Component | URL |\n| --- | --- |\n"
+              f"| UI | <{ui}> |\n"
+              f"| API | <{api}> |\n"
+              f"| API health probe | <{api}/health> |\n\n"
+              f"_Last published {stamp} by `deploy-azure.yml`._\n"
+              "<!-- agentic-sdlc:published-links:end -->"
+          )
+          readme = open('README.md', encoding='utf-8').read()
+          updated = re.sub(
+              r"<!-- agentic-sdlc:published-links:start -->.*?<!-- agentic-sdlc:published-links:end -->",
+              block,
+              readme,
+              flags=re.DOTALL,
+          )
+          if updated != readme:
+              open('README.md', 'w', encoding='utf-8').write(updated)
+          PY
+        env:
+          API_APP: ${{ vars.API_WEBAPP_NAME }}
+          UI_APP: ${{ vars.UI_WEBAPP_NAME }}
+
+      - name: Commit published links
+        run: |
+          if git diff --quiet -- README.md; then
+            echo "README already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Record published links [skip ci]"
+          git push
