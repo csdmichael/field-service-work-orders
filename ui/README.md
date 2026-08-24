@@ -6,10 +6,9 @@ Angular 18 + Ionic 8 standalone components. Talks to the API over REST; never qu
 
 ## Screens
 
-- Work Order Queue mockup with specification panel]
-- Asset Detail and Diagnostics mockup with specification panel
-- Service Log and Parts mockup with specification panel]
-- Completion and Sign-off mockup with specification panel]
+- Work Order Queue
+- Work Order Detail
+- Completion Sign-off
 
 ## API base URL
 

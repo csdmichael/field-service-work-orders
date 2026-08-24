@@ -7,5 +7,5 @@ FastAPI service. Owns validation, authorization, and all database access.
 | `/health` | Liveness probe |
 | `/docs` | Swagger UI |
 | `/openapi.json` | OpenAPI document |
-| `/api/work-items` | Work item collection (GET, POST) |
-| `/api/work-items/{id}` | Single work item (GET, PATCH, DELETE) |
+| `/api/work-orders` | Work Orders collection (GET, POST) |
+| `/api/work-orders/{id}` | Single work order (GET, PATCH, DELETE) |

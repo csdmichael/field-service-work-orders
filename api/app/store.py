@@ -1,29 +1,29 @@
 """In-memory repository seeded with the same rows as db/migrations/0002_seed.sql.
 
-Swap this for the database in db/ by implementing the same four methods; the
+Swap this for the database in db/ by implementing the same five methods; the
 routes do not know which implementation they are talking to.
 """
 from itertools import count
 from typing import Dict, List, Optional
 
 SEED = [
-    {"title": "Replace condenser fan motor", "status": "in-progress", "priority": "high", "location": "Northside Chiller Plant"},
-    {"title": "Quarterly filter service", "status": "new", "priority": "normal", "location": "Harbour Point Tower"},
-    {"title": "Investigate compressor noise", "status": "new", "priority": "high", "location": "Airport Cargo Bay 4"},
-    {"title": "Recalibrate thermostat array", "status": "complete", "priority": "low", "location": "Civic Centre"},
+    {"title": "Sample Work Order 1", "reference": "WO-0001", "status": "new", "priority": "low"},
+    {"title": "Sample Work Order 2", "reference": "WO-0002", "status": "in-progress", "priority": "normal"},
+    {"title": "Sample Work Order 3", "reference": "WO-0003", "status": "complete", "priority": "high"},
+    {"title": "Sample Work Order 4", "reference": "WO-0004", "status": "new", "priority": "low"},
 ]
 
 
-class WorkItemStore:
+class WorkOrderStore:
     def __init__(self) -> None:
         self._ids = count(1)
         self._items: Dict[int, dict] = {}
         for row in SEED:
             self.create(row)
 
-    def list(self, status: Optional[str] = None) -> List[dict]:
+    def list(self, value: Optional[str] = None) -> List[dict]:
         items = sorted(self._items.values(), key=lambda item: item['id'])
-        return [item for item in items if status is None or item['status'] == status]
+        return [item for item in items if value is None or item['status'] == value]
 
     def get(self, item_id: int) -> Optional[dict]:
         return self._items.get(item_id)
@@ -44,4 +44,4 @@ class WorkItemStore:
         return self._items.pop(item_id, None) is not None
 
 
-store = WorkItemStore()
+store = WorkOrderStore()

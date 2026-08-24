@@ -7,7 +7,7 @@ import {
 } from '@ionic/angular/standalone';
 
 import { apiUrl } from './api';
-import { WorkItem } from './work-item';
+import { WorkOrder } from './work-order';
 
 @Component({
   selector: 'app-root',
@@ -34,7 +34,7 @@ import { WorkItem } from './work-item';
           <ion-item *ngFor="let item of items()" button (click)="select(item)">
             <ion-label>
               <h2>{{ item.title }}</h2>
-              <p>{{ item.location }}</p>
+              <p>{{ item.reference }}</p>
             </ion-label>
             <ion-badge slot="end" [color]="colour(item.status)">{{ item.status }}</ion-badge>
           </ion-item>
@@ -42,38 +42,38 @@ import { WorkItem } from './work-item';
         <ng-template #detail>
           <div *ngIf="selected() as item; else empty">
             <h2>{{ item.title }}</h2>
-            <p>Location: {{ item.location }}</p>
-            <p>Priority: {{ item.priority }}</p>
+            <p>Reference: {{ item.reference }}</p>
             <p>Status: {{ item.status }}</p>
+            <p>Priority: {{ item.priority }}</p>
           </div>
-          <ng-template #empty><p>Select a work item from the queue.</p></ng-template>
+          <ng-template #empty><p>Select a work order from the list.</p></ng-template>
         </ng-template>
       </ion-content>
     </ion-app>
   `,
 })
 export class AppComponent {
-  readonly title = 'Field Service Work Orders';
-  readonly screens = ["Work Order Queue mockup with specification panel]", "Asset Detail and Diagnostics mockup with specification panel", "Service Log and Parts mockup with specification panel]", "Completion and Sign-off mockup with specification panel]"];
-  readonly screen = signal("Work Order Queue mockup with specification panel]");
-  readonly items = signal<WorkItem[]>([]);
-  readonly selected = signal<WorkItem | null>(null);
+  readonly title = "Field Service Work Orders";
+  readonly screens = ["Work Order Queue", "Work Order Detail", "Completion Sign-off"];
+  readonly screen = signal("Work Order Queue");
+  readonly items = signal<WorkOrder[]>([]);
+  readonly selected = signal<WorkOrder | null>(null);
   readonly error = signal('');
   private readonly http = inject(HttpClient);
 
   constructor() {
-    this.http.get<WorkItem[]>(apiUrl('/api/work-items')).subscribe({
+    this.http.get<WorkOrder[]>(apiUrl('/api/work-orders')).subscribe({
       next: (items) => this.items.set(items),
       error: () => this.error.set('Could not reach the API.'),
     });
   }
 
-  select(item: WorkItem): void {
+  select(item: WorkOrder): void {
     this.selected.set(item);
     this.screen.set(this.screens[1] ?? this.screens[0]);
   }
 
-  colour(status: string): string {
-    return status === 'complete' ? 'success' : status === 'in-progress' ? 'warning' : 'medium';
+  colour(value: string): string {
+    return value === 'complete' ? 'success' : value === 'in-progress' ? 'warning' : 'medium';
   }
 }

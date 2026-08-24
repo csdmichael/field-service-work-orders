@@ -14,4 +14,4 @@ def test_health_reports_ok():
 def test_openapi_document_is_served():
     document = client.get("/openapi.json")
     assert document.status_code == 200
-    assert "/api/work-items" in document.json()["paths"]
+    assert "/api/work-orders" in document.json()["paths"]

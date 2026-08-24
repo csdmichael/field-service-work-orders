@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import WorkItem, WorkItemCreate, WorkItemUpdate
+from .models import WorkOrder, WorkOrderCreate, WorkOrderUpdate
 from .store import store
 
 app = FastAPI(
@@ -15,7 +15,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
     openapi_tags=[
         {"name": "health", "description": "Liveness probe used by the deploy pipeline."},
-        {"name": "work-items", "description": "The work items the field team acts on."},
+        {"name": "work-orders", "description": "Work Orders managed by this service."},
     ],
 )
 
@@ -33,33 +33,33 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/work-items", response_model=List[WorkItem], tags=["work-items"])
-def list_work_items(status: Optional[str] = Query(default=None)) -> List[dict]:
+@app.get("/api/work-orders", response_model=List[WorkOrder], tags=["work-orders"])
+def list_items(status: Optional[str] = Query(default=None)) -> List[dict]:
     return store.list(status)
 
 
-@app.post("/api/work-items", response_model=WorkItem, status_code=201, tags=["work-items"])
-def create_work_item(body: WorkItemCreate) -> dict:
+@app.post("/api/work-orders", response_model=WorkOrder, status_code=201, tags=["work-orders"])
+def create_item(body: WorkOrderCreate) -> dict:
     return store.create(body.model_dump())
 
 
-@app.get("/api/work-items/{item_id}", response_model=WorkItem, tags=["work-items"])
-def get_work_item(item_id: int) -> dict:
+@app.get("/api/work-orders/{item_id}", response_model=WorkOrder, tags=["work-orders"])
+def get_item(item_id: int) -> dict:
     item = store.get(item_id)
     if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise HTTPException(status_code=404, detail="Work Order not found")
     return item
 
 
-@app.patch("/api/work-items/{item_id}", response_model=WorkItem, tags=["work-items"])
-def update_work_item(item_id: int, body: WorkItemUpdate) -> dict:
+@app.patch("/api/work-orders/{item_id}", response_model=WorkOrder, tags=["work-orders"])
+def update_item(item_id: int, body: WorkOrderUpdate) -> dict:
     item = store.update(item_id, body.model_dump())
     if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise HTTPException(status_code=404, detail="Work Order not found")
     return item
 
 
-@app.delete("/api/work-items/{item_id}", status_code=204, tags=["work-items"])
-def delete_work_item(item_id: int) -> None:
+@app.delete("/api/work-orders/{item_id}", status_code=204, tags=["work-orders"])
+def delete_item(item_id: int) -> None:
     if not store.delete(item_id):
-        raise HTTPException(status_code=404, detail="Work item not found")
+        raise HTTPException(status_code=404, detail="Work Order not found")
