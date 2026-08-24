@@ -44,10 +44,21 @@ jobs:
       - name: Build UI
         working-directory: ui
         run: npm install && npm run build --if-present
+      - name: Package compiled UI for App Service
+        run: |
+          set -euo pipefail
+          rm -rf ui-deploy
+          mkdir -p ui-deploy/public
+          index=$(find ui/dist -name index.html -print -quit)
+          test -n "$index"
+          cp -R "$(dirname "$index")/." ui-deploy/public/
+          cp ui/server.mjs ui-deploy/server.mjs
+          printf '%s\n' '{"private":true,"type":"module","scripts":{"start":"node server.mjs"}}' > ui-deploy/package.json
       - uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.UI_WEBAPP_NAME }}
-          package: ui
+          package: ui-deploy
+
 
       - name: Smoke test the published app
         env:
@@ -81,49 +92,20 @@ jobs:
             -H 'content-type: application/json' -d '{"status": "complete"}' > /dev/null
           curl -fsS -X DELETE "${API}/api/work-orders/${id}" > /dev/null
           echo "CRUD round trip passed"
-
-      - name: Record published links in README
-        run: |
-          python3 - <<'PY'
-          import os, re, datetime
-          api = f"https://{os.environ['API_APP']}.azurewebsites.net"
-          ui = f"https://{os.environ['UI_APP']}.azurewebsites.net"
-          stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-          block = (
-              "<!-- agentic-sdlc:published-links:start -->\n"
-              "| Component | URL |\n| --- | --- |\n"
-              f"| UI | <{ui}> |\n"
-              f"| API | <{api}> |\n"
-              f"| Swagger UI | <{api}/docs> |\n"
-              f"| OpenAPI document | <{api}/openapi.json> |\n"
-              f"| Work Order API | <{api}/api/work-orders> |\n"
-              f"| API health probe | <{api}/health> |\n\n"
-              f"_Last published {stamp} by `deploy-azure.yml`. Smoke tests covered the health probe, "
-              "the OpenAPI document, the UI, and a create/update/delete round trip._\n"
-              "<!-- agentic-sdlc:published-links:end -->"
-          )
-          readme = open('README.md', encoding='utf-8').read()
-          updated = re.sub(
-              r"<!-- agentic-sdlc:published-links:start -->.*?<!-- agentic-sdlc:published-links:end -->",
-              block,
-              readme,
-              flags=re.DOTALL,
-          )
-          if updated != readme:
-              open('README.md', 'w', encoding='utf-8').write(updated)
-          PY
+      - name: "DevOps & Release Agent: record verified links in README"
         env:
           API_APP: ${{ vars.API_WEBAPP_NAME }}
           UI_APP: ${{ vars.UI_WEBAPP_NAME }}
+        run: python3 .github/scripts/record_published_links.py
 
-      - name: Commit published links
+      - name: Commit release-agent documentation
         run: |
           if git diff --quiet -- README.md; then
             echo "README already current"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "agentic-sdlc-release-agent[bot]"
+          git config user.email "agentic-sdlc-release-agent@users.noreply.github.com"
           git add README.md
-          git commit -m "Record published links [skip ci]"
+          git commit -m "DevOps Release Agent: record published links [skip ci]"
           git push
