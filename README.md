@@ -134,7 +134,16 @@ these repository secrets and variables first:
 ## Published links
 
 <!-- agentic-sdlc:published-links:start -->
-_Populated automatically once the deployment pipeline succeeds._
+| Component | URL |
+| --- | --- |
+| UI | <https://field-service-work-orders-ui.azurewebsites.net> |
+| API | <https://field-service-work-orders-api.azurewebsites.net> |
+| Swagger UI | <https://field-service-work-orders-api.azurewebsites.net/docs> |
+| OpenAPI document | <https://field-service-work-orders-api.azurewebsites.net/openapi.json> |
+| Work Order API | <https://field-service-work-orders-api.azurewebsites.net/api/work-orders> |
+| API health probe | <https://field-service-work-orders-api.azurewebsites.net/health> |
+
+_Published and verified 2026-08-24 04:30 UTC by the Agentic SDLC DevOps & Release Agent via `deploy-azure.yml`. Smoke tests covered the health probe, Swagger/OpenAPI, the UI, and a create/update/delete round trip._
 <!-- agentic-sdlc:published-links:end -->
 
 ## Requirements scope
