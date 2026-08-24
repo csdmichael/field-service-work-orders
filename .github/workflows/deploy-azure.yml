@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           api="https://${{ vars.API_WEBAPP_NAME }}.azurewebsites.net"
           find ui -name index.html -not -path '*/node_modules/*' -print0 \
-            | xargs -0 --no-run-if-empty sed -i "s|__API_BASE_URL__|$api|g"
+                        | xargs -0 --no-run-if-empty sed -i "s|__API_BASE_URL_VALUE__|$api|g"
       - name: Build UI
         working-directory: ui
         run: npm install && npm run build --if-present
