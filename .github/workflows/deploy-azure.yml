@@ -1,0 +1,129 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build API
+        run: pip install -r requirements.txt -t api/.python_packages/lib/site-packages
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.API_WEBAPP_NAME }}
+          package: api
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Point the UI at the published API
+        run: |
+          set -euo pipefail
+          api="https://${{ vars.API_WEBAPP_NAME }}.azurewebsites.net"
+          find ui -name index.html -not -path '*/node_modules/*' -print0 \
+            | xargs -0 --no-run-if-empty sed -i "s|__API_BASE_URL__|$api|g"
+      - name: Build UI
+        working-directory: ui
+        run: npm install && npm run build --if-present
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.UI_WEBAPP_NAME }}
+          package: ui
+
+      - name: Smoke test the published app
+        env:
+          API: https://${{ vars.API_WEBAPP_NAME }}.azurewebsites.net
+          UI: https://${{ vars.UI_WEBAPP_NAME }}.azurewebsites.net
+        run: |
+          set -euo pipefail
+          wait_for () {
+            for attempt in $(seq 1 10); do
+              if curl -fsS --max-time 20 "$1" > /dev/null; then
+                echo "reachable: $1"
+                return 0
+              fi
+              sleep 15
+            done
+            echo "timed out waiting for $1" >&2
+            return 1
+          }
+          wait_for "${API}/health"
+          wait_for "${API}/openapi.json"
+          wait_for "${UI}"
+
+          curl -fsS "${API}/api/work-items" -o items.json
+          python3 -c "import json; rows=json.load(open('items.json')); assert rows, 'seed data missing'; print(len(rows), 'work items served')"
+
+          created=$(curl -fsS -X POST "${API}/api/work-items" \
+            -H 'content-type: application/json' \
+            -d '{"title":"Deployment smoke test","location":"CI"}')
+          id=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['id'])" "$created")
+          curl -fsS -X PATCH "${API}/api/work-items/${id}" \
+            -H 'content-type: application/json' -d '{"status":"complete"}' > /dev/null
+          curl -fsS -X DELETE "${API}/api/work-items/${id}" > /dev/null
+          echo "CRUD round trip passed"
+
+      - name: Record published links in README
+        run: |
+          python3 - <<'PY'
+          import os, re, datetime
+          api = f"https://{os.environ['API_APP']}.azurewebsites.net"
+          ui = f"https://{os.environ['UI_APP']}.azurewebsites.net"
+          stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+          block = (
+              "<!-- agentic-sdlc:published-links:start -->\n"
+              "| Component | URL |\n| --- | --- |\n"
+              f"| UI | <{ui}> |\n"
+              f"| API | <{api}> |\n"
+              f"| Swagger UI | <{api}/docs> |\n"
+              f"| OpenAPI document | <{api}/openapi.json> |\n"
+              f"| Work item API | <{api}/api/work-items> |\n"
+              f"| API health probe | <{api}/health> |\n\n"
+              f"_Last published {stamp} by `deploy-azure.yml`. Smoke tests covered the health probe, "
+              "the OpenAPI document, the UI, and a create/update/delete round trip._\n"
+              "<!-- agentic-sdlc:published-links:end -->"
+          )
+          readme = open('README.md', encoding='utf-8').read()
+          updated = re.sub(
+              r"<!-- agentic-sdlc:published-links:start -->.*?<!-- agentic-sdlc:published-links:end -->",
+              block,
+              readme,
+              flags=re.DOTALL,
+          )
+          if updated != readme:
+              open('README.md', 'w', encoding='utf-8').write(updated)
+          PY
+        env:
+          API_APP: ${{ vars.API_WEBAPP_NAME }}
+          UI_APP: ${{ vars.UI_WEBAPP_NAME }}
+
+      - name: Commit published links
+        run: |
+          if git diff --quiet -- README.md; then
+            echo "README already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Record published links [skip ci]"
+          git push
