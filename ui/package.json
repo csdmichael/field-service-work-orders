@@ -1,0 +1,10 @@
+{
+  "name": "field-service-work-orders-ui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "build": "echo \"no build step\"",
+    "test": "echo \"no tests yet\""
+  }
+}
