@@ -2,1000 +2,1174 @@
 
 **Project:** Field service Work Orders  
 **Target environment:** Dev  
-**Status:** **Reviewable proposal — design output only; no systems changed**  
-**Basis:** Intake requirements, technical requirements, UX mockups, and supplied Requirements Agent summary.
+**Proposal status:** Draft for review and human approval  
+**Source status:** Based on supplied intake documents and the approved Requirements Agent summary. The technical requirements document is marked **Draft**, so this proposal should be treated as a design recommendation, not implementation authorization.
 
 ---
 
 ## 1. Executive summary
 
-This proposal translates the approved planning inputs into a reviewable architecture package for the design stage.
-
-### Recommended architecture
-A mobile-first field execution solution with:
+I recommend a **mobile-first, offline-capable field execution architecture** with:
 
 - **Ionic 8 + Angular 18** client for technician handhelds and planner browser access
-- **Python 3.12 + FastAPI** service layer on **Azure App Service**
+- **Python 3.12 + FastAPI** backend on **Azure App Service**
 - **Azure SQL Database** as the transactional system for field execution records
-- **Azure Blob Storage** for photos and signatures, with immutability after closure
+- **Azure Blob Storage** for photos and signatures, with immutability applied for closed orders
 - **Integration adapter** for enterprise asset management and inventory APIs
 - **Microsoft Foundry + Microsoft Agent Framework** for diagnostic assistance
 - **Azure API Management** as the mandatory gateway for all model traffic
-- **Microsoft Entra ID + Intune-compliant device conditional access**
-- **GitHub Actions** for CI/CD
+- **Microsoft Entra ID + Intune-compliant device enforcement**
+- **Idempotent sync and immutable closure design** to satisfy offline and audit requirements
 
-### Architectural position
-The solution should be designed around four dominant constraints:
-
-1. **Offline-first technician workflow**
-2. **Idempotent synchronization and inventory updates**
-3. **Immutable, tamper-evident closure record**
-4. **Human-in-the-loop AI assistance only**
-
-### Key design decisions
-- Use **Azure SQL** rather than Cosmos DB because closure, parts, service entries, and audit records require strong relational consistency.
-- Treat the **enterprise asset management system** as system of record for assets and work orders, and the **inventory system** as system of record for stock.
-- Treat this solution as the **system of record for field execution evidence and completion record**.
-- Enforce **append-only audit and immutable closure semantics** in both data model and API behavior.
-- Route all AI/model requests through **APIM**, with no direct client-to-model path.
-
-### Primary risks
-- Sync conflict handling for offline edits
-- Duplicate or partial inventory decrements
-- Closure race conditions
-- Evidence upload consistency when offline
-- Ambiguity in some business rules not fully specified in source material
+This architecture aligns well with the stated constraints:
+- intermittent connectivity
+- immutable completion records
+- advisory-only AI assistance
+- upstream systems remaining system of record for assets/work orders and inventory
 
 ---
 
-## 2. Scope and assumptions
+## 2. Architecture recommendation
 
-## In scope
-- Technician work queue
-- Accept/reassign workflow
-- Asset detail and diagnostics
-- Service log, parts, photos, notes
-- Completion with meter reading and signatures
-- Immutable completion record
-- AI-assisted troubleshooting retrieval and triage
-- Offline capture and reconnect sync
+## 2.1 Proposed logical architecture
 
-## Out of scope
-Per source requirements:
-- Planning and scheduling
-- Payroll
-- Enterprise asset management ownership
-- Inventory ownership
-- Autonomous AI actions on assets
-
-## Assumptions requiring confirmation
-1. Planner browser view uses the same backend APIs and authorization model.
-2. Reassignment is permitted only to authorized dispatch/planner roles or a constrained technician workflow.
-3. Meter-reading tolerance rules come from configuration, not hardcoded logic.
-4. Signature capture is image-based, not PKI-backed digital signing.
-5. “Tamper-evident” means immutable record + audit metadata + evidence immutability, not blockchain or external notarization.
-6. Offline mode applies to **accepted orders only**, consistent with technical requirements.
-7. Dev environment may use reduced retention/immutability settings for cost and operability, while preserving design parity.
-
----
-
-## 3. Proposed logical architecture
-
-## 3.1 Context view
-
-**Actors and systems**
-- Technician on managed Android device
-- Planner in browser
-- Work Order API
-- Integration Adapter
-- Azure SQL Database
-- Azure Blob Storage
-- Enterprise Asset Management system
-- Inventory system
-- Diagnostics Agent Workflow in Foundry
-- APIM for model traffic
-- Entra ID for identity
-
-## 3.2 Component model
-
-### A. Mobile/Web Client
-Responsibilities:
-- Render queue, asset detail, service log, completion flow
-- Maintain local offline store
-- Maintain sync queue
-- Capture photos, notes, signatures, meter readings
-- Display stale/pending/synced states clearly
-
-Key design notes:
-- Use local persistence suitable for Ionic offline patterns
-- Separate UI view models from sync entities
-- Maintain per-entity sync status and conflict markers
-
-### B. Work Order API
-Responsibilities:
-- Canonical business API for client
-- State transitions and business rule enforcement
-- Service entry and parts line management
-- Completion workflow orchestration
-- Evidence metadata registration
-- Audit event creation
-- AI workflow invocation through APIM/Foundry path
-
-Key design notes:
-- FastAPI with typed contracts
-- Idempotency support for mutating operations
-- Optimistic concurrency for updates before closure
-- Hard block edits after closure
-
-### C. Integration Adapter
-Responsibilities:
-- Translate internal contracts to external EAM and inventory APIs
-- Retry/backoff/jitter
-- Idempotency for stock movement
-- Cache asset/work-order snapshots where allowed
-- Raise integration alerts/events
-
-Key design notes:
-- Keep external schemas isolated from core domain model
-- Use adapter boundary to prevent upstream contract leakage into client
-
-### D. SQL Data Store
-Responsibilities:
-- Transactional persistence for work execution domain
+```text
+Managed Technician Device / Planner Browser
+        |
+        v
+Ionic + Angular Client
+- Queue
+- Asset detail
+- Service log
+- Completion/sign-off
+- Local offline store
+- Sync engine
+        |
+        v
+FastAPI Work Order API (Azure App Service)
+- AuthN/AuthZ
+- Work order state transitions
+- Service entries
+- Parts usage
+- Completion workflow
+- Evidence metadata
+- Sync/idempotency
 - Audit trail
-- Sync state support
-- Immutable completion record metadata
-
-### E. Blob Evidence Store
-Responsibilities:
-- Store photos and signatures
-- Enforce immutability after closure
-- Retention management
-- Evidence integrity metadata
-
-### F. Diagnostics Agent Workflow
-Responsibilities:
-- Fault triage ranking
-- Troubleshooting retrieval
-- Human review checkpoint before technician sees actionable guidance if policy requires
-- Logging of prompt/response metadata through governed path
-
-### G. APIM
-Responsibilities:
-- Single ingress for model traffic
-- Managed identity auth
-- Quotas, safety policies, observability
-- Request/response policy enforcement
+        |
+        +-----------------------> Azure SQL Database
+        |                         - execution record
+        |                         - sync state
+        |                         - audit/event tables
+        |
+        +-----------------------> Azure Blob Storage
+        |                         - photos
+        |                         - signatures
+        |                         - immutable evidence after closure
+        |
+        +-----------------------> Integration Adapter
+        |                         - EAM read/write
+        |                         - Inventory movement API
+        |                         - retry/backoff/idempotency
+        |
+        +-----------------------> APIM
+                                  |
+                                  v
+                         Microsoft Foundry / Agent Framework
+                         - fault triage agent
+                         - troubleshooting retrieval agent
+```
 
 ---
 
-## 4. Domain model recommendations
+## 2.2 Architectural style
 
-## 4.1 Core entities
+Recommended style:
 
-### WorkOrder
-Represents technician-facing execution of an upstream work order.
+- **Layered service architecture** for core transaction processing
+- **Task-based sync model** for offline-first mobile behavior
+- **Integration façade/adapter pattern** for upstream systems
+- **Event/audit recording** for tamper-evident closure and traceability
+- **Human-in-the-loop agent workflow** for diagnostics
 
-Suggested fields:
-- `workOrderId` (internal UUID)
-- `externalWorkOrderId`
-- `assetId`
-- `assignedTechnicianId`
-- `status` (`Assigned`, `InProgress`, `PendingSync`, `Completed`, `Closed`, `Reassigned`)
-- `slaRisk`
-- `assetCriticality`
+Why this fits:
+- business rules are concentrated in one API boundary
+- upstream contract volatility is isolated in the adapter
+- offline sync can be implemented without exposing internal DB semantics to clients
+- immutable closure can be enforced centrally
+
+---
+
+## 3. Key design decisions
+
+## 3.1 Decision summary
+
+1. **Use Azure SQL Database** for transactional consistency
+2. **Use local offline store on device with sync queue**
+3. **Treat closure as a one-way state transition**
+4. **Store evidence binaries in Blob Storage, metadata in SQL**
+5. **Use idempotency keys for all sync mutations and inventory movements**
+6. **Route all model traffic through APIM**
+7. **Keep AI advisory-only; no autonomous operational actions**
+8. **Use managed identity for service-to-service integrations where supported**
+9. **Separate internal domain contracts from upstream system contracts**
+10. **Use append-only audit/event records for critical state changes**
+
+---
+
+## 4. Proposed ADRs
+
+## ADR-001 — Transactional store for field execution record
+
+**Status:** Proposed  
+**Decision:** Use **Azure SQL Database** as the system of record for field execution data owned by this solution.
+
+**Context:**
+- service entries, parts lines, signatures, meter readings, and closure records are relational
+- closure requires consistency across multiple entities
+- immutable completion record needs strong transactional guarantees
+
+**Consequences:**
+- simpler enforcement of business invariants
+- easier reporting and audit joins
+- requires careful sync conflict handling for offline clients
+
+---
+
+## ADR-002 — Offline-first mobile synchronization
+
+**Status:** Proposed  
+**Decision:** Implement a **client-side durable offline store** with an outbound sync queue and server-side idempotent mutation processing.
+
+**Context:**
+- site wireless coverage is intermittent
+- technicians must continue work while offline
+- duplicate submission risk is high after reconnect
+
+**Consequences:**
+- improved resilience and technician productivity
+- more complex client sync logic
+- requires mutation IDs, versioning, and replay-safe APIs
+
+---
+
+## ADR-003 — Immutable closure model
+
+**Status:** Proposed  
+**Decision:** Once a work order reaches **Closed**, execution content becomes read-only and a tamper-evident completion record is generated.
+
+**Context:**
+- requirements state closed orders must produce an immutable audit record
+- attachments and notes become read-only after closure
+- evidence must be retained for policy duration
+
+**Consequences:**
+- corrections require controlled post-close exception workflow, not direct edits
+- simplifies audit posture
+- requires explicit handling for failed close attempts and discrepancy cases
+
+---
+
+## ADR-004 — Evidence storage separation
+
+**Status:** Proposed  
+**Decision:** Store photos and signature images in **Azure Blob Storage** and store only metadata, hashes, and references in SQL.
+
+**Context:**
+- evidence files are binary and may be large
+- retention and immutability requirements apply
+- SQL should remain optimized for transactional metadata
+
+**Consequences:**
+- better scalability and storage economics
+- requires integrity checks and lifecycle controls
+- closure workflow must finalize evidence references before immutability
+
+---
+
+## ADR-005 — AI gateway enforcement
+
+**Status:** Proposed  
+**Decision:** All model and agent traffic must traverse **Azure API Management** before reaching Microsoft Foundry.
+
+**Context:**
+- project constraints require APIM as the single enforcement point
+- need quotas, observability, policy enforcement, and content safety
+
+**Consequences:**
+- centralized governance and telemetry
+- additional dependency in diagnostic path
+- diagnostics must degrade gracefully if APIM or model path is unavailable
+
+---
+
+## ADR-006 — Human approval in diagnostics workflow
+
+**Status:** Proposed, pending clarification  
+**Decision:** Agent output is **advisory only** and must pass through a human approval/review step before being presented as actionable guidance.
+
+**Context:**
+- supplied documents indicate a human approval step
+- wording is ambiguous about whether the reviewer is the technician, senior engineer, or another role
+
+**Consequences:**
+- safer operational use of AI
+- requires explicit UX and workflow design
+- product owner must clarify reviewer identity and SLA
+
+**Open question:** Who performs the approval step?
+
+---
+
+## 5. Domain model recommendation
+
+## 5.1 Core entities
+
+Recommended core entities:
+
+- **Technician**
+- **WorkOrder**
+- **WorkOrderAssignment**
+- **AssetSnapshot**
+- **FaultCodeSnapshot**
+- **ServiceEntry**
+- **LabourEntry**
+- **PartUsage**
+- **InventoryMovementRequest**
+- **Attachment**
+- **SignatureCapture**
+- **MeterReading**
+- **CompletionRecord**
+- **Discrepancy**
+- **SyncOperation**
+- **AuditEvent**
+- **TroubleshootingSession**
+- **EscalationRequest**
+
+## 5.2 Ownership boundaries
+
+### Owned by this solution
+- service execution record
+- labour logs
+- parts usage logs
+- evidence metadata
+- completion record
+- sync state
+- audit events
+- troubleshooting interaction history
+
+### Referenced from upstream systems
+- asset master
+- work order master/dispatch source
+- inventory stock source
+- planner-facing dispatch truth
+
+This separation is important because the requirements explicitly state upstream systems remain system of record.
+
+---
+
+## 6. Data model proposal
+
+## 6.1 Relational schema outline
+
+### `work_orders`
+- `work_order_id` (PK)
+- `external_work_order_id`
+- `asset_id`
+- `assigned_technician_id`
+- `status` (`Assigned`, `InProgress`, `PendingReassign`, `ClosureBlocked`, `Closed`)
+- `sla_risk`
+- `asset_criticality`
 - `location`
-- `acceptedAt`
-- `closedAt`
-- `version`
-- `lastSyncedAt`
-- `sourceSnapshotTimestamp`
+- `version_no`
+- `accepted_at`
+- `closed_at`
+- `is_stale_upstream_data`
+- `created_at`
+- `updated_at`
 
-### AssetSnapshot
-Cached asset context for offline use.
+### `work_order_assignments`
+- `assignment_id` (PK)
+- `work_order_id` (FK)
+- `from_technician_id`
+- `to_technician_id`
+- `action_type` (`Assigned`, `Accepted`, `Reassigned`)
+- `reason`
+- `acted_by`
+- `acted_at`
 
-Fields:
-- `assetId`
-- `assetType`
+### `asset_snapshots`
+- `snapshot_id` (PK)
+- `work_order_id` (FK)
+- `asset_id`
+- `asset_type`
 - `location`
-- `activeFaultCodes`
-- `snapshotCapturedAt`
-- `staleAfter`
-- `sourceSystem`
+- `snapshot_payload_json`
+- `source_timestamp`
+- `is_stale`
 
-### ServiceEntry
-Fields:
-- `serviceEntryId`
-- `workOrderId`
-- `technicianId`
-- `laborMinutes`
+### `fault_code_snapshots`
+- `fault_snapshot_id` (PK)
+- `work_order_id` (FK)
+- `fault_code`
+- `description`
+- `severity`
+- `source_timestamp`
+
+### `service_entries`
+- `service_entry_id` (PK)
+- `work_order_id` (FK)
+- `technician_id`
 - `notes`
-- `startedAt`
-- `endedAt`
-- `createdAt`
-- `isOfflineCaptured`
+- `started_at`
+- `ended_at`
+- `created_offline_at`
+- `sync_status`
+- `client_mutation_id`
+- `created_at`
 
-### PartUsage
-Fields:
-- `partUsageId`
-- `workOrderId`
-- `serviceEntryId`
-- `partNumber`
+### `labour_entries`
+- `labour_entry_id` (PK)
+- `service_entry_id` (FK)
+- `minutes_worked`
+- `labour_code`
+- `created_at`
+
+### `part_usage`
+- `part_usage_id` (PK)
+- `service_entry_id` (FK)
+- `part_id`
 - `quantity`
 - `uom`
-- `inventoryMovementStatus`
-- `inventoryIdempotencyKey`
-- `substitutionOffered`
-- `createdAt`
+- `inventory_status`
+- `inventory_idempotency_key`
+- `substitute_part_id`
+- `created_at`
 
-### Attachment
-Fields:
-- `attachmentId`
-- `workOrderId`
-- `type` (`Photo`, `Signature`)
-- `blobUri`
-- `contentHash`
-- `capturedAt`
-- `uploadedAt`
-- `uploadStatus`
-- `capturedOffline`
+### `attachments`
+- `attachment_id` (PK)
+- `work_order_id` (FK)
+- `service_entry_id` (nullable FK)
+- `blob_uri`
+- `blob_version_id`
+- `content_hash`
+- `media_type`
+- `capture_mode` (`Photo`, `Signature`)
+- `uploaded_at`
+- `captured_offline_at`
+- `is_read_only`
+- `created_at`
 
-### MeterReading
-Fields:
-- `meterReadingId`
-- `workOrderId`
-- `readingType`
-- `value`
+### `meter_readings`
+- `meter_reading_id` (PK)
+- `work_order_id` (FK)
+- `reading_type`
+- `reading_value`
 - `unit`
-- `capturedAt`
-- `withinTolerance`
-- `toleranceRuleId`
+- `tolerance_min`
+- `tolerance_max`
+- `is_within_tolerance`
+- `captured_at`
 
-### CompletionRecord
-Immutable closure artifact.
+### `completion_records`
+- `completion_record_id` (PK)
+- `work_order_id` (FK, unique)
+- `technician_id`
+- `site_contact_name`
+- `site_contact_signature_attachment_id`
+- `technician_signature_attachment_id` (optional if required later)
+- `completion_payload_json`
+- `record_hash`
+- `retention_until`
+- `closed_at`
+- `immutable_at`
 
-Fields:
-- `completionRecordId`
-- `workOrderId`
-- `technicianId`
-- `siteContactName`
-- `siteContactSignatureAttachmentId`
-- `technicianSignatureAttachmentId` if required
-- `meterReadingSummary`
-- `partsSummary`
-- `serviceSummary`
-- `closedAt`
-- `retentionPolicyId`
-- `recordHash`
-- `immutableFrom`
+### `discrepancies`
+- `discrepancy_id` (PK)
+- `work_order_id` (FK)
+- `discrepancy_type`
+- `details`
+- `status`
+- `raised_at`
+- `resolved_at`
 
-### AuditEvent
-Append-only event log.
+### `sync_operations`
+- `sync_operation_id` (PK)
+- `client_mutation_id` (unique)
+- `device_id`
+- `technician_id`
+- `work_order_id`
+- `operation_type`
+- `request_hash`
+- `processing_status`
+- `response_code`
+- `processed_at`
 
-Fields:
-- `auditEventId`
-- `workOrderId`
-- `eventType`
-- `actorId`
-- `actorType`
-- `occurredAt`
-- `correlationId`
-- `idempotencyKey`
-- `beforeJson`
-- `afterJson`
+### `audit_events`
+- `audit_event_id` (PK)
+- `entity_type`
+- `entity_id`
+- `event_type`
+- `actor_id`
+- `event_timestamp`
+- `event_payload_json`
+- `event_hash`
+- `correlation_id`
 
-## 4.2 State model
-
-Recommended work order lifecycle:
-
-- `Assigned`
-- `Accepted`
-- `InProgress`
-- `PendingClosure`
-- `Closed`
-- `Reassigned`
-- `ClosureBlocked`
-
-Notes:
-- Upstream mapping may differ; internal state machine should map explicitly.
-- Once `Closed`, all mutable child entities become read-only.
-- `PendingSync` should be a client sync state, not necessarily a business state.
-
----
-
-## 5. Data architecture and storage design
-
-## 5.1 Azure SQL schema recommendation
-
-Suggested schema groups:
-
-### Operational schema
-- `work_orders`
-- `service_entries`
-- `part_usage`
-- `meter_readings`
-- `attachments`
-- `asset_snapshots`
-
-### Audit/immutability schema
-- `completion_records`
-- `audit_events`
-- `state_transitions`
-
-### Integration schema
-- `outbound_messages`
-- `integration_attempts`
-- `sync_checkpoints`
-
-### Reference/config schema
-- `fault_code_mappings`
-- `troubleshooting_content_refs`
-- `meter_tolerance_rules`
-- `retention_policies`
-
-## 5.2 Immutability design
-For closed orders:
-- Disallow update/delete in API layer
-- Restrict DB permissions to prevent accidental mutation
-- Use append-only audit events
-- Persist a final `completion_record`
-- Lock evidence blobs via immutability policy
-- Store content hashes for evidence and completion summary
-
-## 5.3 Evidence storage design
-Blob path convention:
-`/work-orders/{workOrderId}/{attachmentType}/{attachmentId}`
-
-Metadata:
-- `workOrderId`
-- `attachmentType`
-- `capturedAt`
-- `contentHash`
-- `uploadedBy`
-- `closureState`
-
-Recommendation:
-- Use separate container classes for mutable-in-flight and immutable-closed evidence, or enforce policy transition at closure.
+### `troubleshooting_sessions`
+- `session_id` (PK)
+- `work_order_id` (FK)
+- `fault_code`
+- `agent_request_ref`
+- `guidance_payload_json`
+- `review_status`
+- `reviewed_by`
+- `reviewed_at`
+- `outcome`
 
 ---
 
-## 6. API contract recommendations
+## 7. API contract proposal
 
-Below are reviewable contract proposals, not final generated OpenAPI.
+## 7.1 API design principles
 
-## 6.1 Client-facing API surface
+- RESTful resource model for core work-order operations
+- explicit command endpoints for state transitions
+- optimistic concurrency using version or ETag
+- idempotency required for mutation endpoints
+- sync-friendly payloads with client mutation IDs
+- no direct client access to upstream systems or model endpoints
 
-### Queue and dispatch
-- `GET /api/v1/work-orders?assignee=me&status=open`
-- `POST /api/v1/work-orders/{id}/accept`
-- `POST /api/v1/work-orders/{id}/reassign`
+---
 
-### Asset and diagnostics
-- `GET /api/v1/work-orders/{id}`
-- `GET /api/v1/work-orders/{id}/asset`
-- `GET /api/v1/work-orders/{id}/history`
-- `POST /api/v1/work-orders/{id}/diagnostics/query`
+## 7.2 Core endpoints
 
-### Service log and parts
-- `POST /api/v1/work-orders/{id}/service-entries`
-- `POST /api/v1/work-orders/{id}/parts`
-- `POST /api/v1/work-orders/{id}/attachments/initiate`
-- `POST /api/v1/work-orders/{id}/attachments/{attachmentId}/complete`
+## Work order queue
 
-### Completion
-- `POST /api/v1/work-orders/{id}/meter-readings`
-- `POST /api/v1/work-orders/{id}/closure/validate`
-- `POST /api/v1/work-orders/{id}/close`
-- `GET /api/v1/work-orders/{id}/completion-record`
+### `GET /api/v1/work-orders`
+Query params:
+- `assignedTo=me`
+- `status=open`
+- `since=<timestamp>`
+- `pageSize=50`
 
-### Sync support
-- `GET /api/v1/sync/bootstrap`
-- `POST /api/v1/sync/batch`
-- `GET /api/v1/sync/status/{clientRequestId}`
+Response:
+```json
+{
+  "items": [
+    {
+      "workOrderId": "WO-1001",
+      "externalWorkOrderId": "EAM-77821",
+      "status": "Assigned",
+      "slaRisk": 1,
+      "assetCriticality": 2,
+      "assetId": "AST-9001",
+      "assetType": "Pump",
+      "location": "Plant A / Line 2",
+      "summary": "High vibration alarm",
+      "isStaleUpstreamData": false,
+      "version": 7,
+      "updatedAt": "2026-08-27T09:15:00Z"
+    }
+  ],
+  "serverTime": "2026-08-27T09:15:05Z"
+}
+```
 
-## 6.2 API behavior requirements
+Sorting should default to:
+1. SLA risk
+2. asset criticality
+3. updated timestamp
 
-All mutating endpoints should support:
-- `Idempotency-Key` header
-- `If-Match` or version token where relevant
-- `X-Correlation-Id`
+---
 
-All responses should include:
-- server timestamp
-- entity version
-- sync status where applicable
+## Work order detail
 
-## 6.3 Example contracts
+### `GET /api/v1/work-orders/{workOrderId}`
 
-### Accept work order
-`POST /api/v1/work-orders/{id}/accept`
+Response includes:
+- work order summary
+- asset snapshot
+- active fault codes
+- recent service history
+- current service entries
+- attachment metadata
+- closure eligibility flags
+
+---
+
+## Accept work order
+
+### `POST /api/v1/work-orders/{workOrderId}/accept`
 
 Request:
 ```json
 {
-  "clientRequestId": "8d8e7b1a-2c4a-4e0f-a1d0-2d5d6f7a1001",
-  "acceptedAt": "2026-08-27T10:15:00Z"
+  "clientMutationId": "8f9f2f3d-4f7d-4d4c-9f1d-0a1f7f6d1111",
+  "expectedVersion": 7,
+  "acceptedAt": "2026-08-27T09:16:00Z"
 }
 ```
 
 Response:
 ```json
 {
-  "workOrderId": "wo-123",
+  "workOrderId": "WO-1001",
   "status": "InProgress",
-  "acceptedAt": "2026-08-27T10:15:02Z",
-  "version": 7,
-  "syncState": "Confirmed"
+  "version": 8,
+  "processed": true
 }
 ```
 
-### Reassign work order
-`POST /api/v1/work-orders/{id}/reassign`
+Rules:
+- idempotent on `clientMutationId`
+- reject if already closed
+- reject version conflict with `409 Conflict`
+
+---
+
+## Reassign work order
+
+### `POST /api/v1/work-orders/{workOrderId}/reassign`
 
 Request:
 ```json
 {
-  "newAssigneeId": "tech-456",
-  "reasonCode": "SKILL_MISMATCH",
-  "reasonText": "Requires certified electrical specialist",
-  "clientRequestId": "f0d3f4d2-6f4f-4f6f-8d3a-0f1f2f3f4f5a"
+  "clientMutationId": "4a2c0d9e-0a9b-4c7d-b1d2-2e2f11112222",
+  "expectedVersion": 8,
+  "toTechnicianId": "TECH-204",
+  "reason": "Specialist electrical certification required"
 }
 ```
 
-### Add part usage
-`POST /api/v1/work-orders/{id}/parts`
+---
+
+## Add service entry
+
+### `POST /api/v1/work-orders/{workOrderId}/service-entries`
 
 Request:
 ```json
 {
-  "serviceEntryId": "se-100",
-  "partNumber": "P-77821",
-  "quantity": 2,
-  "uom": "EA",
-  "scanSource": "BARCODE",
-  "clientRequestId": "part-req-001"
+  "clientMutationId": "1b3f0d66-8d1d-4f0d-9f0e-333344445555",
+  "startedAt": "2026-08-27T09:20:00Z",
+  "endedAt": "2026-08-27T10:05:00Z",
+  "notes": "Inspected motor housing and replaced worn coupling insert.",
+  "labour": [
+    {
+      "minutesWorked": 45,
+      "labourCode": "MECH_STD"
+    }
+  ],
+  "parts": [
+    {
+      "partId": "PART-778",
+      "quantity": 1,
+      "uom": "EA",
+      "scanSource": "barcode"
+    }
+  ],
+  "capturedOfflineAt": "2026-08-27T10:05:10Z"
+}
+```
+
+Response should include:
+- created service entry ID
+- inventory movement submission status
+- substitute/back-order options if blocked
+
+---
+
+## Attachment upload flow
+
+Recommended two-step pattern:
+
+### `POST /api/v1/work-orders/{workOrderId}/attachments/initiate`
+Returns pre-authorized upload details or server-mediated upload token.
+
+### `POST /api/v1/work-orders/{workOrderId}/attachments/complete`
+Registers metadata:
+```json
+{
+  "clientMutationId": "att-123",
+  "blobReference": "blob://...",
+  "contentHash": "sha256-...",
+  "mediaType": "image/jpeg",
+  "captureMode": "Photo",
+  "capturedOfflineAt": "2026-08-27T10:10:00Z"
+}
+```
+
+For Dev, a simpler server-upload pattern is acceptable if security and size constraints are manageable.
+
+---
+
+## Diagnostics guidance
+
+### `POST /api/v1/work-orders/{workOrderId}/diagnostics/guidance`
+
+Request:
+```json
+{
+  "faultCode": "FC-2009",
+  "assetId": "AST-9001",
+  "includeRecentHistory": true
 }
 ```
 
 Response:
 ```json
 {
-  "partUsageId": "pu-9001",
-  "inventoryMovementStatus": "Pending",
-  "inventoryIdempotencyKey": "inv-wo-123-pu-9001",
-  "substitutionOptions": []
+  "sessionId": "TS-10001",
+  "reviewStatus": "PendingApproval",
+  "guidance": [
+    {
+      "stepNo": 1,
+      "text": "Inspect coupling alignment and wear pattern."
+    },
+    {
+      "stepNo": 2,
+      "text": "Check vibration sensor mounting and cable integrity."
+    }
+  ],
+  "disclaimer": "Advisory guidance only. Technician approval required before action."
 }
 ```
 
-### Close work order
-`POST /api/v1/work-orders/{id}/close`
+If approval is by another role, response should omit actionable presentation until approved.
+
+---
+
+## Close work order
+
+### `POST /api/v1/work-orders/{workOrderId}/close`
 
 Request:
 ```json
 {
+  "clientMutationId": "close-999",
+  "expectedVersion": 12,
   "siteContact": {
     "name": "Jordan Smith",
-    "signatureAttachmentId": "att-sign-001"
+    "signatureAttachmentId": "ATT-5001"
   },
   "meterReadings": [
     {
-      "readingType": "HOURS",
-      "value": 1245.6,
+      "readingType": "Hours",
+      "value": 1820.4,
       "unit": "h"
     }
   ],
-  "clientRequestId": "close-wo-123"
+  "closureNotes": "Returned asset to service. Test run normal."
 }
 ```
 
 Response:
 ```json
 {
-  "workOrderId": "wo-123",
+  "workOrderId": "WO-1001",
   "status": "Closed",
-  "closedAt": "2026-08-27T11:02:14Z",
-  "completionRecordId": "cr-123",
-  "immutable": true,
-  "retentionUntil": "2033-08-27T00:00:00Z"
+  "completionRecordId": "CR-7001",
+  "closedAt": "2026-08-27T10:30:00Z",
+  "immutable": true
 }
 ```
 
-## 6.4 External integration contracts
-
-### EAM integration
-Operations:
-- fetch assigned work orders
-- fetch asset details
-- fetch recent service history
-- update assignment/status where required
-
-Requirements:
-- timeout 2 seconds
-- cached fallback for reads
-- explicit stale-data indicator
-
-### Inventory integration
-Operations:
-- reserve or validate part availability if supported
-- decrement stock on confirmed usage
-- query substitutes/back-order options
-
-Requirements:
-- timeout 3 seconds
-- idempotency key per part usage line
-- no duplicate decrement on retry
+Validation:
+- at least one service entry exists
+- site-contact signature required
+- meter reading required
+- tolerance check must pass
+- all pending evidence references finalized
+- no unresolved sync dependency for closure-critical data
 
 ---
 
-## 7. Offline and synchronization architecture
+## Sync endpoint
 
-## 7.1 Offline-first principles
-- Accepted orders must be usable offline
-- Local writes are durable before UI confirmation
-- Sync is asynchronous and resumable
-- Server remains source of truth for final confirmation
-- UI must distinguish:
-  - saved locally
-  - pending sync
-  - synced
-  - conflict
-  - failed
+### `POST /api/v1/sync/batch`
 
-## 7.2 Recommended sync model
-Use an **operation-based sync queue**, not full-record overwrite.
+Purpose:
+- submit queued offline mutations
+- receive per-item results
+- reduce chattiness on reconnect
 
-Queued operations:
-- accept work order
-- reassign work order
-- create service entry
-- add part usage
-- upload attachment metadata
-- submit meter reading
-- request closure
-
-Each operation should carry:
-- client request ID
-- entity ID
-- operation type
-- timestamp
-- idempotency key
-- dependency chain if needed
-
-## 7.3 Conflict strategy
-Recommended rules:
-- **Append operations** like notes, photos, service entries: merge safely
-- **State transitions**: reject invalid stale transitions and return current state
-- **Closure**: single-writer finalization; if already closed, return completion record
-- **Reassignment/acceptance**: use version checks and clear conflict messaging
-
-## 7.4 Attachment sync
-Recommended pattern:
-1. Capture file locally
-2. Create local attachment record
-3. On reconnect, request upload initiation
-4. Upload blob
-5. Confirm upload completion
-6. Include attachment in closure validation
-
----
-
-## 8. AI/agent architecture recommendations
-
-## 8.1 Allowed AI role
-AI is advisory only:
-- rank likely causes
-- retrieve troubleshooting content
-- identify missing knowledge coverage
-- suggest escalation
-
-AI must not:
-- execute work order changes autonomously
-- close work orders
-- alter inventory
-- issue control commands to assets
-
-## 8.2 Workflow design
-Recommended sequence:
-1. Client requests diagnostics for work order/fault code
-2. Work Order API assembles minimal context
-3. API calls APIM
-4. APIM routes to Foundry/Microsoft Agent Framework workflow
-5. Fault triage agent ranks probable causes
-6. Troubleshooting retrieval agent fetches relevant content
-7. Policy/human-review checkpoint applied
-8. Response returned with provenance and disclaimer
-
-## 8.3 AI contract shape
-Suggested response:
+Request:
 ```json
 {
-  "faultCode": "FC-201",
-  "probableCauses": [
+  "deviceId": "DEV-001",
+  "operations": [
     {
-      "label": "Filter blockage",
-      "confidence": 0.74
-    }
-  ],
-  "troubleshootingSteps": [
+      "clientMutationId": "op-1",
+      "operationType": "AcceptWorkOrder",
+      "payload": { "...": "..." }
+    },
     {
-      "stepNumber": 1,
-      "instruction": "Inspect intake filter for obstruction.",
-      "sourceRef": "KB-4432"
+      "clientMutationId": "op-2",
+      "operationType": "CreateServiceEntry",
+      "payload": { "...": "..." }
     }
-  ],
-  "escalationOffered": true,
-  "advisoryOnly": true,
-  "generatedAt": "2026-08-27T10:20:00Z"
+  ]
 }
 ```
 
-## 8.4 AI governance requirements
-- APIM-only routing for model traffic
-- Managed identity authentication
-- Prompt/response logging with redaction
-- Content safety policy enforcement
-- Per-user quotas
-- No secrets in prompts
-- Minimal necessary context only
-- Human approval before any suggested action is operationalized
+Response:
+```json
+{
+  "results": [
+    {
+      "clientMutationId": "op-1",
+      "status": "Processed",
+      "httpStatus": 200
+    },
+    {
+      "clientMutationId": "op-2",
+      "status": "Conflict",
+      "httpStatus": 409,
+      "message": "Version mismatch"
+    }
+  ]
+}
+```
 
 ---
 
-## 9. Security architecture and threat-model considerations
+## 8. Integration contract recommendations
 
-## 9.1 Identity and access
-- Entra ID SSO
-- Conditional access requiring Intune-compliant managed devices
-- Role-based authorization:
+## 8.1 Enterprise asset management integration
+
+Use adapter-owned contracts, not direct pass-through.
+
+### Read operations
+- get assigned work orders
+- get asset details
+- get active fault codes
+- get recent service history
+- update assignment/acceptance status where required
+
+### Failure behavior
+As stated in source documents, recommended behavior:
+- 2-second timeout target
+- 3 retries with exponential backoff and jitter
+- if exhausted, serve cached asset/work-order snapshot marked stale
+- raise integration alert
+
+### Design note
+Cache should be **bounded and explicit**, not silently authoritative.
+
+---
+
+## 8.2 Inventory movement integration
+
+Critical requirement: decrement stock **once and only once**.
+
+Recommended contract fields:
+- `inventoryMovementId`
+- `partId`
+- `quantity`
+- `uom`
+- `workOrderId`
+- `serviceEntryId`
+- `idempotencyKey`
+- `technicianId`
+- `timestamp`
+
+Failure handling:
+- if out of stock, block entry finalization or mark as unresolved with substitute/back-order options per business rule
+- retries must reuse same idempotency key
+- API responses should distinguish:
+  - accepted
+  - duplicate already processed
+  - insufficient stock
+  - substitute available
+  - back-order available
+
+---
+
+## 9. Sync and offline architecture
+
+## 9.1 Client-side recommendation
+
+Use a durable local store with:
+- assigned work orders
+- accepted work order details
+- asset snapshots
+- service entries pending sync
+- attachment upload queue
+- sync operation log
+- last successful sync watermark
+
+Likely implementation options in Ionic/Angular:
+- IndexedDB via a supported abstraction
+- encrypted local storage for sensitive metadata where feasible
+- background sync when connectivity returns
+
+## 9.2 Sync rules
+
+1. Every mutation gets a `clientMutationId`
+2. Server stores processed mutation IDs
+3. Mutations are replay-safe
+4. Closure is blocked until required local artifacts are uploaded and registered
+5. Conflicts return explicit resolution instructions
+6. Read models can be stale; write models must be validated on sync
+
+## 9.3 Conflict strategy
+
+Recommended strategy by operation:
+
+- **Accept work order:** optimistic concurrency; reject if already accepted/closed by another actor
+- **Reassign:** reject on stale version; user must refresh
+- **Service entry creation:** allow append if work order still open
+- **Attachment registration:** idempotent by content hash + mutation ID
+- **Close work order:** strict validation; reject if any prerequisite changed
+
+---
+
+## 10. Security architecture
+
+## 10.1 Identity and access
+
+Recommended controls:
+- Entra ID authentication
+- Conditional Access requiring Intune-compliant managed devices
+- role-based authorization:
   - Technician
   - Planner
-  - Supervisor
+  - Senior Engineer
   - Support/Admin
-- Fine-grained checks on reassignment, closure, and evidence access
+- least-privilege API scopes
+- managed identity for backend-to-backend calls where supported
 
-## 9.2 Data protection
+## 10.2 Data protection
+
 - TLS in transit
-- Encryption at rest for SQL and Blob
-- Managed identities for service-to-service auth
-- No embedded credentials in client
-- Minimize PII in logs and AI prompts
+- encryption at rest for SQL and Blob
+- avoid storing unnecessary PII in mobile cache
+- signatures and evidence treated as sensitive records
+- content hashes for evidence integrity verification
+- immutable storage policy applied after closure finalization
 
-## 9.3 Threat model summary using STRIDE
+## 10.3 API protections
 
-### Spoofing
-Risks:
-- stolen device/session
-- forged sync requests
-
-Mitigations:
-- Entra ID + MFA
-- device compliance
-- token validation
-- short-lived tokens
-- correlation and audit trails
-
-### Tampering
-Risks:
-- offline store manipulation
-- evidence replacement
-- closure record edits
-
-Mitigations:
-- signed/authenticated API calls
-- server-side validation
-- content hashes
-- immutable blob policy after closure
-- append-only audit events
-- read-only enforcement after closure
-
-### Repudiation
-Risks:
-- user denies reassignment, parts usage, or closure
-
-Mitigations:
-- audit events with actor, timestamp, correlation ID
-- signature capture linkage
-- immutable completion record
-
-### Information disclosure
-Risks:
-- cached data exposure on device
-- overbroad API responses
-- prompt leakage to AI systems
-
-Mitigations:
-- encrypted local storage where supported
-- least-privilege APIs
-- role-based filtering
-- prompt minimization and APIM governance
-- log redaction
-
-### Denial of service
-Risks:
-- upstream dependency outages
-- sync storms after reconnect
-- model quota exhaustion
-
-Mitigations:
-- backoff/jitter
-- local queue throttling
-- stale-cache fallback for reads
-- APIM quotas
-- warm standby region
-
-### Elevation of privilege
-Risks:
-- technician performing planner-only actions
-- bypassing closure validation
-
-Mitigations:
-- server-side authorization
-- policy-based endpoint guards
-- workflow validation before closure
-- no client-trusted role decisions
-
-## 9.4 Additional mobile-specific concerns
-- Lost/stolen device
-- Screenshot/data leakage
-- Offline evidence left on device
-- Rooted/jailbroken device risk
-
-Mitigations:
-- Intune controls
-- device compliance
-- app data wipe on unenroll where supported
-- local retention minimization
-- no permanent local storage after successful sync where not needed
+- APIM in front of model traffic
+- rate limiting and quotas
+- request/response logging with redaction
+- schema validation where practical
+- anti-replay/idempotency enforcement for mutation endpoints
 
 ---
 
-## 10. Reliability, performance, and operability
+## 11. Threat model considerations
 
-## 10.1 Performance targets
-From requirements:
-- Queue and asset detail under 2 seconds over site network
+Below is a reviewable STRIDE-style summary.
 
-Design implications:
-- precomputed queue sort fields
-- indexed SQL access paths
-- asset snapshot caching
-- pagination and bounded history retrieval
-- async evidence upload
+## 11.1 Spoofing
+Threats:
+- stolen technician credentials
+- unauthorized device access
+- forged service-to-service identity
 
-## 10.2 Availability
+Mitigations:
+- Entra ID MFA
+- Intune-compliant device enforcement
+- managed identity for services
+- short-lived tokens
+- device/session revocation procedures
+
+## 11.2 Tampering
+Threats:
+- offline data manipulation on device
+- evidence file replacement
+- post-closure record edits
+- duplicate inventory decrements through replay
+
+Mitigations:
+- signed/idempotent sync operations
+- server-side validation of all business rules
+- evidence content hashing
+- immutable completion record
+- append-only audit events
+- blob immutability after closure
+
+## 11.3 Repudiation
+Threats:
+- technician disputes acceptance, reassignment, or closure actions
+- inability to prove evidence lineage
+
+Mitigations:
+- actor/timestamp/correlation audit trail
+- immutable closure record hash
+- attachment metadata with capture/upload timestamps
+- audit event retention aligned to policy
+
+## 11.4 Information disclosure
+Threats:
+- cached asset/work-order data exposed on lost device
+- photos/signatures leaked
+- sensitive prompts or model outputs logged unsafely
+
+Mitigations:
+- managed devices
+- local data minimization
+- encrypted storage where possible
+- log redaction
+- APIM policy controls
+- role-based access checks on every API call
+
+## 11.5 Denial of service
+Threats:
+- upstream EAM/inventory outages
+- APIM/model path degradation
+- sync storm after connectivity restoration
+
+Mitigations:
+- cached stale reads for non-destructive views
+- retry with backoff/jitter
+- batch sync endpoint
+- queue throttling
+- graceful degradation for diagnostics
+
+## 11.6 Elevation of privilege
+Threats:
+- technician accessing planner/admin functions
+- agent workflow bypassing human review
+- direct access to storage or upstream APIs
+
+Mitigations:
+- role-based authorization
+- explicit workflow state checks
+- no direct client access to upstream systems
+- no direct model endpoint access outside APIM
+- storage access mediated by backend or tightly scoped upload mechanism
+
+---
+
+## 12. AI/agent architecture considerations
+
+## 12.1 Recommended workflow
+
+1. Work Order API gathers fault code and relevant context
+2. Request sent through APIM
+3. Microsoft Agent Framework orchestrates:
+   - fault triage
+   - troubleshooting retrieval
+4. Guidance returned as advisory content
+5. Human review/approval step enforced
+6. Guidance and outcome logged in troubleshooting session
+
+## 12.2 Guardrails
+
+- no direct actuation
+- no automatic work-order state changes from agent output
+- no direct inventory updates from agent output
+- prompt inputs should be minimized to required operational context
+- outputs should be labeled as advisory
+- failures must not block core work-order execution
+
+## 12.3 Open design clarification
+
+The source documents conflict slightly on who approves suggested action before it reaches the technician. This must be resolved before implementation.
+
+---
+
+## 13. Non-functional architecture alignment
+
+## Performance
+Target:
+- queue and asset detail under 2 seconds over site network
+
+Recommendations:
+- precomputed queue projection
+- indexed SQL queries on assignee/status/sort fields
+- bounded payloads
+- cache recent asset snapshots
+- lazy-load non-critical history/details
+
+## Availability
 Target:
 - 99.9% during shift hours
 
-Design implications:
+Recommendations:
 - App Service Premium v3
-- zone redundancy
-- paired-region warm standby
+- zone redundancy in primary region
+- warm standby in paired region
 - health probes and alerting
-- dependency-aware degradation for EAM/inventory/model services
+- dependency-aware degradation
 
-## 10.3 Observability
+## Offline
+Target:
+- full offline capture and sync on reconnect
+
+Recommendations:
+- local durable store
+- sync queue
+- replay-safe APIs
+- attachment upload queue
+- explicit sync status in UI
+
+## Accessibility
+Target:
+- WCAG 2.1 AA and glove/low-light usability
+
+Recommendations:
+- large touch targets
+- high contrast mode
+- offline-safe form validation
+- minimal typing
+- barcode/camera-first interactions
+
+---
+
+## 14. Observability and operational design
+
 Recommended telemetry:
-- API latency and error rate
-- sync queue depth
-- offline-to-sync success rate
-- duplicate idempotency suppression count
-- inventory retry count
-- closure validation failure reasons
-- evidence upload failure rate
-- AI request volume, latency, safety blocks
 
-Use:
-- correlation IDs end-to-end
-- structured logs
-- audit logs separate from operational logs
+### Application telemetry
+- API latency
+- endpoint error rates
+- sync queue processing times
+- conflict rates
+- closure validation failures
+- inventory duplicate-prevention events
 
----
+### Integration telemetry
+- EAM timeout/retry counts
+- inventory API timeout/retry counts
+- stale cache serves
+- alert generation counts
 
-## 11. Architecture decision records
+### AI telemetry
+- APIM request counts
+- model latency
+- content safety policy hits
+- guidance approval/rejection rates
+- fallback/degraded-mode usage
 
-## ADR-001: Use Azure SQL Database for execution record
-**Status:** Proposed  
-**Decision:** Use Azure SQL Database as primary transactional store.  
-**Rationale:** Strong relational consistency, transactional closure, auditability, and simpler enforcement of immutable completion semantics.  
-**Consequences:** Need careful scaling and indexing; offline sync complexity remains in app layer.
-
-## ADR-002: Use operation-based offline sync with idempotent commands
-**Status:** Proposed  
-**Decision:** Sync client mutations as discrete commands with idempotency keys.  
-**Rationale:** Safer than record overwrite for intermittent connectivity and duplicate retries.  
-**Consequences:** More sync orchestration logic; clearer audit and conflict handling.
-
-## ADR-003: Closed work orders are immutable
-**Status:** Proposed  
-**Decision:** After successful closure, work order and child records become read-only; changes require compensating records, not edits.  
-**Rationale:** Required for tamper-evident audit record.  
-**Consequences:** Support processes must handle corrections via exceptions, not updates.
-
-## ADR-004: Store evidence in Blob Storage with immutability after closure
-**Status:** Proposed  
-**Decision:** Photos and signatures stored in Blob; immutability policy applied at closure.  
-**Rationale:** Cost-effective binary storage with retention support.  
-**Consequences:** Need clear lifecycle for pre-closure vs post-closure evidence.
-
-## ADR-005: Route all model traffic through APIM
-**Status:** Proposed  
-**Decision:** No direct Foundry/model access from client or backend bypassing APIM.  
-**Rationale:** Governance, quotas, safety, observability, and policy enforcement.  
-**Consequences:** APIM becomes critical dependency for AI features.
-
-## ADR-006: AI remains advisory with human-in-the-loop
-**Status:** Proposed  
-**Decision:** AI may suggest diagnostics and troubleshooting only; no autonomous operational actions.  
-**Rationale:** Matches requirements and safety posture.  
-**Consequences:** UX must clearly label AI output as advisory.
-
-## ADR-007: Separate integration adapter from core work order API
-**Status:** Proposed  
-**Decision:** External EAM/inventory contracts terminate in adapter boundary.  
-**Rationale:** Reduces coupling and isolates retries/idempotency.  
-**Consequences:** Additional service/component complexity, but better maintainability.
+### Audit telemetry
+- work-order state transitions
+- reassignment reasons
+- closure record generation
+- evidence immutability application success/failure
 
 ---
 
-## 12. Implementable technical plan
+## 15. Reviewable technical implementation plan
 
-## 12.1 Workstreams
+## Phase 1 — Foundation
+- establish repo structure and environment configuration
+- define OpenAPI contract for core work-order endpoints
+- create SQL schema baseline
+- set up Blob storage conventions
+- define auth model and role claims
+- define sync/idempotency framework
 
-### Workstream 1: API and domain foundation
-- Define OpenAPI contracts
-- Implement domain model and state machine
-- Add idempotency middleware
-- Add optimistic concurrency/versioning
-- Implement audit event pipeline
+## Phase 2 — Core work-order flow
+- queue endpoint and sorting logic
+- work-order detail endpoint
+- accept/reassign commands
+- planner visibility hooks
+- stale-data indicators and cache handling
 
-### Workstream 2: Offline-capable client
-- Build queue, asset detail, service log, completion screens
-- Implement local store and operation queue
-- Add sync status UX
-- Add camera/barcode/signature capture
-- Add stale-data indicators
+## Phase 3 — Service log and parts
+- service entry creation
+- labour and parts persistence
+- inventory adapter with idempotency keys
+- out-of-stock/substitute/back-order response model
 
-### Workstream 3: Integration adapter
-- EAM read/update adapters
-- Inventory decrement/substitute flows
-- Retry/backoff/jitter
-- Idempotency key propagation
-- Integration alerting
+## Phase 4 — Evidence and offline
+- attachment capture and upload flow
+- offline queue and reconnect sync
+- attachment metadata registration
+- read-only enforcement after closure
 
-### Workstream 4: Evidence and closure
-- Attachment initiation/upload/complete flow
-- Blob metadata and hashing
-- Closure validation endpoint
-- Completion record generation
-- Immutability policy application design
+## Phase 5 — Completion and immutability
+- meter reading validation
+- signature capture registration
+- close workflow transaction
+- completion record generation and hashing
+- immutability policy application for evidence
 
-### Workstream 5: AI diagnostics
-- APIM route and policies
-- Foundry agent workflow
-- minimal-context prompt assembly
-- troubleshooting retrieval contract
-- advisory UX and provenance display
+## Phase 6 — Diagnostics assistance
+- APIM-routed model integration
+- Agent Framework orchestration
+- troubleshooting session persistence
+- human approval workflow
+- degraded-mode behavior
 
-### Workstream 6: Security and operations
-- Entra ID authN/authZ
-- managed identities
-- telemetry and dashboards
-- alert rules
-- CI/CD pipelines and environment protections
-
-## 12.2 Suggested delivery sequence
-1. Domain model + API contracts
-2. Queue + accept flow
-3. Asset detail + cached snapshots
-4. Service entries + parts + inventory idempotency
-5. Attachments offline/upload
-6. Closure validation + immutable completion record
-7. AI diagnostics workflow
-8. Hardening, observability, accessibility, performance
-
-## 12.3 Definition of done for design stage
-- Architecture reviewed and approved
-- ADRs accepted or amended
-- API contracts reviewed
-- Data model reviewed
-- Threat model reviewed
-- Open questions assigned owners
-- Delivery plan sequenced into implementation backlog
+## Phase 7 — Hardening
+- threat mitigation validation
+- performance tuning
+- accessibility review
+- audit/reporting validation
+- operational dashboards and alerts
 
 ---
 
-## 13. Testing strategy recommendations
+## 16. Suggested backlog items for design-to-build handoff
 
-### Functional
-- Queue ordering
-- accept/reassign rules
-- asset detail/history retrieval
-- troubleshooting retrieval
-- parts decrement behavior
-- closure validation and sign-off
-
-### Offline/sync
-- create/update offline then reconnect
-- duplicate submission retries
-- conflict resolution
-- stale cache display
-- attachment upload recovery
-
-### Security
-- role enforcement
-- device compliance assumptions
-- token validation
-- unauthorized closure/reassignment attempts
-- evidence access control
-
-### Data integrity
-- exactly-once inventory decrement
-- immutable closure record
-- read-only closed attachments/notes
-- audit completeness
-
-### Performance
-- queue load under 2 seconds
-- asset detail under 2 seconds
-- sync throughput after reconnect surge
-
-### Resilience
-- EAM unavailable
-- inventory unavailable
-- APIM/model unavailable
-- blob upload interruption
-- SQL transient faults
+1. Define canonical internal work-order domain model
+2. Define sync protocol and conflict semantics
+3. Define idempotency standard for all mutation endpoints
+4. Define closure transaction and immutable record format
+5. Define evidence hashing and retention metadata model
+6. Define inventory movement adapter contract
+7. Define stale-cache UX and API flags
+8. Define diagnostics approval workflow actor and SLA
+9. Define authorization matrix by role and endpoint
+10. Define audit event taxonomy and retention rules
 
 ---
 
-## 14. Open issues and decisions needed
+## 17. Key risks and mitigations
 
-1. **Reassignment authority model**  
-   Can technicians reassign directly, or only request reassignment?
+## Risk 1 — Ambiguous diagnostics approval workflow
+Impact: blocked implementation or unsafe AI UX  
+Mitigation: product/security decision before build
 
-2. **Closure state mapping**  
-   Does upstream EAM own final “closed” state, or does this app close locally then notify upstream?
+## Risk 2 — Offline sync complexity
+Impact: duplicate writes, user confusion, closure failures  
+Mitigation: early sync protocol design, test harness, idempotency-first APIs
 
-3. **Meter tolerance source**  
-   Where are tolerance rules mastered and maintained?
+## Risk 3 — Upstream integration instability
+Impact: stale data, failed dispatch updates, stock inconsistency  
+Mitigation: adapter isolation, retries, stale-read UX, alerting
 
-4. **Signature requirements**  
-   Is dual signature mandatory in all cases, and is technician signature also required?
+## Risk 4 — Immutability enforcement gaps
+Impact: audit failure  
+Mitigation: one-way close transaction, append-only audit, evidence hash + immutable storage
 
-5. **Retention policy in Dev**  
-   Should Dev simulate 7-year retention logically without enforcing full immutable retention physically?
-
-6. **Offline storage technology**  
-   Confirm preferred Ionic local persistence approach and encryption expectations.
-
-7. **Planner web scope**  
-   Read-only visibility or full operational parity?
-
-8. **Compensating process for post-closure corrections**  
-   What is the approved exception workflow if a closed record is wrong?
-
-9. **Knowledge source for troubleshooting**  
-   Where is troubleshooting content indexed and governed?
-
-10. **Photo/signature classification**  
-    Any privacy or legal constraints beyond public demo classification?
+## Risk 5 — Inventory decrement duplication
+Impact: stock inaccuracies  
+Mitigation: mandatory idempotency key per parts line and duplicate-detection telemetry
 
 ---
 
-## 15. Reviewable recommendation
+## 18. Required clarifications before implementation approval
 
-I recommend approving this design direction with the following conditions:
+1. Who performs the diagnostics human approval step?
+2. Is planner web access in scope for this release or only technician mobile?
+3. Is technician signature also required, or only site-contact signature?
+4. What is the authoritative meter tolerance source and rule format?
+5. What is the exact retention policy expression for completion records and evidence in Dev vs production?
+6. Are offline reassignment actions truly allowed, or only offline work logging on already accepted orders?
+7. What post-close correction process is required if an error is discovered after closure?
 
-- Confirm the open business-rule items in Section 14.
-- Approve the ADR set, especially immutability, APIM-only AI routing, and operation-based sync.
-- Proceed to detailed API specification and implementation backlog decomposition.
-- Treat offline sync and closure immutability as the two highest-risk design areas and validate them early with prototypes.
+---
 
-If useful, I can next produce any of these as follow-on design artifacts:
+## 19. Recommendation
 
-1. **Detailed ADR document set**
-2. **OpenAPI draft**
-3. **SQL schema draft**
-4. **Sequence diagrams for sync, parts decrement, and closure**
-5. **Threat model table**
-6. **Implementation backlog by epic/feature**
+**Recommend approval for design progression with clarifications**, not yet for implementation.
+
+The proposed architecture is coherent, implementable, and aligned to the supplied constraints, especially:
+- offline-first operation
+- immutable closure
+- upstream system-of-record boundaries
+- APIM-governed AI usage through Microsoft Agent Framework
+
+The main gating issue is the **diagnostics approval workflow ambiguity**, followed by a few policy and scope clarifications.
+
+If useful, I can next convert this into a **formal architecture package** with:
+1. ADR documents,
+2. OpenAPI starter spec,
+3. SQL DDL draft,
+4. sequence diagrams for sync/closure/diagnostics,
+5. and a traceability matrix from requirements to architecture.
