@@ -1,8 +1,8 @@
 -- Forward-only migration 0001: initial schema
-CREATE TABLE IF NOT EXISTS work_item (
+CREATE TABLE IF NOT EXISTS work_order (
     id           BIGSERIAL PRIMARY KEY,
     title        TEXT        NOT NULL,
-    location     TEXT        NOT NULL DEFAULT '',
+    reference    TEXT        NOT NULL DEFAULT '',
     status       TEXT        NOT NULL DEFAULT 'new',
     priority     TEXT        NOT NULL DEFAULT 'normal',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
