@@ -20,6 +20,6 @@ describe('AppComponent', () => {
   it('renders the project title', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('ion-title').textContent).toContain("Field Service Work Orders");
+    expect(fixture.nativeElement.querySelector('ion-title').textContent).toContain("Field service Work Orders");
   });
 });

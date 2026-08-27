@@ -1,4 +1,4 @@
-# Field Service Work Orders — UI
+# Field service Work Orders — UI
 
 Angular 18 + Ionic 8 standalone components. Talks to the API over REST; never queries the database directly.
 
@@ -7,8 +7,9 @@ Angular 18 + Ionic 8 standalone components. Talks to the API over REST; never qu
 ## Screens
 
 - Work Order Queue
-- Work Order Detail
-- Completion Sign-off
+- Asset Detail and Diagnostics
+- Service Log and Parts
+- Completion and Sign-off
 
 ## API base URL
 

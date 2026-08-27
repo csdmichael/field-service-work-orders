@@ -9,6 +9,10 @@ permissions:
   id-token: write
   contents: write
 
+concurrency:
+    group: deploy-${{ github.repository }}-${{ github.ref }}
+    cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

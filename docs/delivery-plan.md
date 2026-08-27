@@ -1,4 +1,4 @@
-# Delivery plan — Field Service Work Orders
+# Delivery plan — Field service Work Orders
 
 Sprints are two weeks. Each sprint closes with a demo and an approval gate.
 
@@ -10,15 +10,15 @@ Sprints are two weeks. Each sprint closes with a demo and an approval gate.
 
 ## Approved scope
 
-- Technician Mobile App (iOS/Android, managed devices)
-- Integration Layer (API gateway, connects to asset/parts master)
-- Upstream Systems (Asset Management, Inventory)
-- Authentication (Entra ID SSO, MFA)
-- Audit Record Storage (Immutable, timestamped records)
-- Offline Sync Engine
-- **Features:**
-- List of assigned work orders, sorted by SLA risk and asset criticality
-- Real-time updates (within 30 seconds)
-- Accept/reassign work order (with mandatory reason for reassign)
-- **UX Mockup Reference:**
-- [SCR-01 Mockup](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/ux-mockups/Field-Service-Work-Orders-UX-Mockups.docx)
+- **Database migrations** under `infrastructure/db/migrations/` creating/altering tables noted above plus indexes for SLA risk + criticality sorting.
+- **Configuration**: environment variables for APIM endpoint, Foundry agent IDs, Blob containers, tolerance thresholds, offline cache TTL.
+- **CI updates**: GitHub Actions workflow to run backend unit tests (pytest), frontend tests (Jest + Cypress component tests), linting, and DB migration check.
+- **Offline conflict handling**: implement per-record sync status + idempotent transition tokens to prevent duplicate state changes.
+- **Diagnostics agent latency**: wrap agent calls with timeout + fallback messaging; ensure UI doesn’t block critical path.
+- **Immutable completion enforcement**: DB transaction plus Blob legal hold to prevent edits; add monitoring for unauthorized write attempts.
+- **Inventory consistency**: idempotency keys plus reconciliation job for stuck “pending” entries.
+- **Attachment storage cost**: lifecycle management for drafts, immutability only on closure.
+- **Traceability**: Every change references corresponding user story ID and acceptance criteria.
+- **Security**: Verify Entra claim checks on every endpoint/component, no secrets committed, managed identity only.
+- **Offline behavior**: Ensure caches mark stale timestamps and UI indicates pending sync.
+- **Idempotency & concurrency**: Review transaction scopes, idempotency tokens, and retry logic.
