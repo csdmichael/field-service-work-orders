@@ -1,14 +1,14 @@
 -- Forward-only migration 0002: reference data so a new environment is not empty.
 -- Re-runnable: each row is inserted only when its title is absent.
-INSERT INTO work_item (title, status, priority, location)
-SELECT 'Replace condenser fan motor', 'in-progress', 'high', 'Northside Chiller Plant'
-WHERE NOT EXISTS (SELECT 1 FROM work_item WHERE title = 'Replace condenser fan motor');
-INSERT INTO work_item (title, status, priority, location)
-SELECT 'Quarterly filter service', 'new', 'normal', 'Harbour Point Tower'
-WHERE NOT EXISTS (SELECT 1 FROM work_item WHERE title = 'Quarterly filter service');
-INSERT INTO work_item (title, status, priority, location)
-SELECT 'Investigate compressor noise', 'new', 'high', 'Airport Cargo Bay 4'
-WHERE NOT EXISTS (SELECT 1 FROM work_item WHERE title = 'Investigate compressor noise');
-INSERT INTO work_item (title, status, priority, location)
-SELECT 'Recalibrate thermostat array', 'complete', 'low', 'Civic Centre'
-WHERE NOT EXISTS (SELECT 1 FROM work_item WHERE title = 'Recalibrate thermostat array');
+INSERT INTO work_order (title, reference, status, priority)
+SELECT 'Sample Work Order 1', 'WO-0001', 'new', 'low'
+WHERE NOT EXISTS (SELECT 1 FROM work_order WHERE title = 'Sample Work Order 1');
+INSERT INTO work_order (title, reference, status, priority)
+SELECT 'Sample Work Order 2', 'WO-0002', 'in-progress', 'normal'
+WHERE NOT EXISTS (SELECT 1 FROM work_order WHERE title = 'Sample Work Order 2');
+INSERT INTO work_order (title, reference, status, priority)
+SELECT 'Sample Work Order 3', 'WO-0003', 'complete', 'high'
+WHERE NOT EXISTS (SELECT 1 FROM work_order WHERE title = 'Sample Work Order 3');
+INSERT INTO work_order (title, reference, status, priority)
+SELECT 'Sample Work Order 4', 'WO-0004', 'new', 'low'
+WHERE NOT EXISTS (SELECT 1 FROM work_order WHERE title = 'Sample Work Order 4');
