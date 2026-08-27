@@ -53,8 +53,8 @@ import { WorkOrder } from './work-order';
   `,
 })
 export class AppComponent {
-  readonly title = "Field Service Work Orders";
-  readonly screens = ["Work Order Queue", "Work Order Detail", "Completion Sign-off"];
+  readonly title = "Field service Work Orders";
+  readonly screens = ["Work Order Queue", "Asset Detail and Diagnostics", "Service Log and Parts", "Completion and Sign-off"];
   readonly screen = signal("Work Order Queue");
   readonly items = signal<WorkOrder[]>([]);
   readonly selected = signal<WorkOrder | null>(null);
