@@ -1,401 +1,424 @@
 # Requirements Agent — Plan-Stage Proposal
 
-**Project:** Field service Work Orders  
+**Project:** Field Service Work Orders  
 **Target environment:** Dev  
-**Status:** **Reviewable proposal — not approved and not yet executed**  
-**Source artifacts:** Requirements v1.0 demo artifact, Technical Requirements v1.0 draft dated 2026-08-24, UX mockups.  
-**Approved artifacts supplied:** None.
+**Proposal status:** Draft for review and human approval  
+**Source approval status:** No approved artifacts were supplied. The technical requirements document is marked **Draft**; the requirements document is a demo artifact. This proposal does not authorize implementation or external-system changes.
 
-## 1. Executive summary
+## 1. Proposed delivery objective
 
-The proposed release is a technician-facing, mobile-first work-order execution application that enables technicians to:
+Deliver a mobile-first technician experience that supports:
 
-1. View and prioritize assigned work orders.
-2. Accept or reassign work.
-3. Review asset details, fault codes, history, and guided diagnostics.
-4. Capture labour, parts, photographs, and notes, including offline capture.
-5. Complete work with meter readings and site-contact sign-off.
-6. Produce an immutable, tamper-evident completion record retained for seven years.
+1. Receiving and prioritizing assigned work orders.
+2. Viewing asset information, fault codes, service history, and troubleshooting guidance.
+3. Recording labour, parts, photographs, and notes, including offline capture.
+4. Completing work orders with meter readings, site-contact sign-off, and an immutable audit record.
 
-The proposed implementation uses:
+The proposed solution uses:
 
-- **Ionic 8 / Angular 18 / TypeScript** mobile and planner-facing client.
-- **Python 3.12 / FastAPI** service layer on Azure App Service.
-- **Azure SQL Database** for relational execution data.
-- **Azure Blob Storage** with immutability for evidence.
-- **Microsoft Foundry and Microsoft Agent Framework** for assisted fault triage and troubleshooting retrieval.
-- **Azure API Management** as the gateway for all model traffic.
-- **Microsoft Entra ID with Intune-compliant-device conditional access**.
-- **GitHub Actions** for CI/CD.
+- Ionic 8 / Angular 18 / TypeScript client.
+- Python 3.12 / FastAPI service layer.
+- Azure SQL Database for transactional work-order data.
+- Azure Blob Storage with immutability for evidence.
+- Enterprise asset-management integration for asset and work-order data.
+- Inventory-system integration for stock movements.
+- Microsoft Foundry with Microsoft Agent Framework for diagnostic assistance.
+- Azure API Management for all model traffic.
+- Microsoft Entra ID with Conditional Access and Intune-compliant devices.
+- Azure App Service Premium v3.
+- GitHub Actions with provenance attestation and environment protection.
 
-The primary delivery risks are offline synchronization, immutable closure, integration reliability, inventory idempotency, and unresolved business rules around permissions, meter tolerances, retention configuration, and reassignment.
+## 2. Proposed work hierarchy
+
+### EPIC-01 — Field Service Work Orders
+
+**Outcome:** Maintenance technicians can receive, diagnose, execute, and close work orders from managed handheld devices while preserving an auditable execution record.
 
 ---
 
-# 2. Proposed traceability hierarchy
+## 3. Features and user stories
 
-## EPIC-01 — Field Service Work Orders
+### FEAT-01 — Work Order Queue and Dispatch
 
-**Business outcome:**  
-As a maintenance operations team, we want technicians to receive, diagnose, and complete work orders from a handheld device so that asset downtime is reduced and every intervention leaves a complete, auditable record.
+**UX trace:** SCR-01 — Work Order Queue
 
-| Feature | Scope | Source traceability |
+#### US-101 — Prioritized assigned work-order queue
+
+**As a** technician,  
+**I want** to see my assigned work orders ranked by SLA risk and asset criticality,  
+**so that** I can work my route in the right order.
+
+**Acceptance criteria**
+
+- Given open work orders exist, when the queue loads, orders are sorted by SLA risk and then asset criticality.
+- Given a new dispatch is assigned to the technician, the queue reflects it within 30 seconds without manual refresh.
+- Each queue item displays sufficient context to identify the work order, including status, priority/SLA information, asset, location, and criticality.
+- If the upstream work-order system is unavailable, the application displays the last cached data as stale and raises an integration alert through the service layer.
+- Queue rendering meets the agreed performance target of under two seconds over the site network.
+
+#### US-102 — Accept or reassign work order
+
+**As a** technician,  
+**I want** to accept or reassign a work order,  
+**so that** dispatch reflects who is actually working it.
+
+**Acceptance criteria**
+
+- Given an unaccepted order, when the technician accepts it, the status changes to **In Progress**.
+- The planner and upstream work-order system receive the status change.
+- Given the technician reassigns an order, a reason is mandatory.
+- The reassignment reason, actor, timestamp, previous assignee, and new assignee are recorded.
+- Conflicting or duplicate state changes are rejected safely and surfaced to the user.
+- Offline acceptance is supported for an accepted order and synchronizes idempotently when connectivity returns.
+
+---
+
+### FEAT-02 — Asset Detail and Diagnostics
+
+**UX trace:** SCR-02 — Asset Detail and Diagnostics
+
+#### US-201 — View asset details and service history
+
+**As a** technician,  
+**I want** to view an asset’s active fault codes and recent service events,  
+**so that** I can diagnose without calling the plant office.
+
+**Acceptance criteria**
+
+- Given a work order for an asset, the application shows asset ID, type, location, and active fault codes.
+- If prior service events exist, the ten most recent are listed newest first.
+- Cached asset information is clearly marked stale when the asset-management system cannot be reached.
+- Asset and work-order access is restricted according to the technician’s authorization.
+- Asset detail renders within the agreed under-two-second target when required data is available locally or from the service layer.
+
+#### US-202 — Guided troubleshooting
+
+**As a** technician,  
+**I want** guided troubleshooting steps for the reported fault,  
+**so that** common issues resolve on the first visit.
+
+**Acceptance criteria**
+
+- Given a known fault code, matching troubleshooting steps are shown in the prescribed order.
+- The diagnostic workflow records the fault code, retrieved guidance, technician interaction, and outcome.
+- Given no matching guidance exists, escalation to a senior engineer is offered and the gap is recorded.
+- Agent-generated suggestions are advisory only and cannot directly act on an asset or change system state.
+- A human approval step occurs before any suggested action is presented as an actionable recommendation to the technician.
+- All model traffic routes through Azure API Management.
+- The workflow handles model, gateway, and content-index failures without blocking ordinary work-order execution.
+
+**Clarification required:** The technical document says the workflow pauses for technician approval before a suggested action reaches the technician. The product owner should confirm whether this means approval by the technician, a senior engineer, or another designated reviewer.
+
+---
+
+### FEAT-03 — Service Log and Parts
+
+**UX trace:** SCR-03 — Service Log and Parts
+
+#### US-301 — Record labour and parts
+
+**As a** technician,  
+**I want** to log labour time and the parts I used,  
+**so that** inventory and cost reporting remain accurate.
+
+**Acceptance criteria**
+
+- A part can be scanned or selected.
+- When a valid service log is saved, the corresponding stock movement is submitted.
+- On-hand stock is decremented once and only once.
+- Each parts movement uses an idempotency key so retries cannot create duplicate deductions.
+- If a part is out of stock, the entry is blocked and a substitute or back-order option is offered.
+- The user can see whether a stock movement is pending, successful, or failed.
+- Offline entries are durably queued and synchronized on reconnect.
+- Failed synchronization does not silently discard the service entry or parts line.
+
+#### US-302 — Attach photographs and notes
+
+**As a** technician,  
+**I want** to attach photos and notes to a work order,  
+**so that** the record supports later warranty or dispute claims.
+
+**Acceptance criteria**
+
+- Photos can be captured from the device camera or selected through the supported mobile workflow.
+- Notes and photographs can be associated with the relevant work order and service entry.
+- Given a photo is attached while offline, it is queued locally and uploaded when connectivity returns.
+- Upload retry is safe and does not create duplicate evidence.
+- Evidence is stored in Azure Blob Storage using the approved access-control model.
+- When an order is closed, attachments and notes become read-only.
+- Signature images and photographic evidence are protected by the retention and immutability policy.
+
+---
+
+### FEAT-04 — Completion and Sign-off
+
+**UX trace:** SCR-04 — Completion and Sign-off
+
+#### US-401 — Capture sign-off and meter readings
+
+**As a** technician,  
+**I want** to capture site-contact sign-off with verified meter readings,  
+**so that** the work order meets completion policy.
+
+**Acceptance criteria**
+
+- An order cannot be submitted for closure unless it contains at least one service entry.
+- A site-contact signature and meter reading are mandatory before closure.
+- Meter readings are validated against the configured tolerance.
+- If a reading falls outside tolerance, closure is blocked and a discrepancy is raised.
+- The user receives a clear explanation of missing or invalid completion data.
+- Signature images and meter readings are associated with the work-order completion transaction.
+- Closure is transactional: a partially completed closure cannot leave the order in an ambiguous state.
+
+#### US-402 — Produce immutable completion record
+
+**As a** maintenance planner,  
+**I want** every closed order to produce a tamper-evident record,  
+**so that** I can answer an audit without reconstructing history.
+
+**Acceptance criteria**
+
+- When an order is closed, a timestamped record is written containing, at minimum, technician, site contact, parts, service entries, notes, evidence references, and readings.
+- The record cannot be edited through the application after closure.
+- Evidence associated with the closed order is placed under the approved immutable-storage policy.
+- The record includes sufficient metadata to verify its integrity and provenance.
+- Records are retained for seven years, subject to confirmation of the governing asset-retention policy.
+- Closure and record creation are observable and generate an alert if persistence fails.
+- Repeated closure requests do not create duplicate completion records.
+
+---
+
+## 4. Proposed non-functional work items
+
+### NFR-01 — Performance
+
+- Queue and asset-detail render target: **under two seconds** over the site network.
+- Define measurement conditions, payload sizes, device profile, and percentile target before test execution.
+- Add client and API performance telemetry.
+
+### NFR-02 — Availability and resilience
+
+- Service-platform target: **99.9% during shift hours**.
+- App Service Premium v3 with zone redundancy and paired-region warm standby, subject to platform approval.
+- Define recovery time objective, recovery point objective, and failover operating procedure; these are not specified in the supplied documents.
+
+### NFR-03 — Offline operation and synchronization
+
+- Technicians can view an accepted order and log work without connectivity.
+- Local data is encrypted at rest on the device.
+- Sync uses durable queues, retry/backoff, conflict handling, and idempotency keys.
+- The UI shows sync state, stale data, and unresolved conflicts.
+- Closed orders cannot be modified through delayed offline updates.
+
+### NFR-04 — Security and device trust
+
+- Entra ID SSO.
+- Conditional Access requires an Intune-compliant managed device.
+- No OTP path is included in the current technical proposal.
+- Use managed identities for service-to-service integrations.
+- Enforce least-privilege authorization for technicians, planners, senior engineers, and administrators.
+- Do not store client secrets in the mobile application.
+
+### NFR-05 — Accessibility and field usability
+
+- Target WCAG 2.1 AA.
+- Support use with gloves and in low-light conditions.
+- Validate touch-target sizes, contrast, focus order, error messaging, and screen-reader behavior where applicable.
+- Confirm supported handheld models, screen sizes, and Android versions.
+
+### NFR-06 — Audit, retention, and evidence integrity
+
+- Closed work orders are immutable.
+- Photographic evidence and signature images use immutable Blob containers.
+- Evidence and completion records are retained for seven years, pending policy confirmation.
+- Log security-relevant actions, state changes, integration events, and diagnostic-agent activity without exposing sensitive data.
+
+### NFR-07 — AI governance
+
+- All model traffic passes through APIM.
+- Use managed identity, per-user quotas, content-safety controls, and observability.
+- Agent output is advisory and must not directly operate equipment or mutate system-of-record data.
+- Record model/version, prompt or request correlation metadata, retrieved sources, approval outcome, and final user-visible recommendation according to approved privacy policy.
+- Establish a fallback path when the agent is unavailable.
+
+---
+
+## 5. Proposed implementation tasks
+
+### Foundation and contracts
+
+- **TASK-001:** Confirm product scope, personas, roles, supported devices, and completion policy.
+- **TASK-002:** Establish domain model for work orders, assignments, assets, service entries, parts lines, evidence, signatures, discrepancies, and completion records.
+- **TASK-003:** Define FastAPI OpenAPI contracts and versioning strategy.
+- **TASK-004:** Define Azure SQL schema, transaction boundaries, indexes, and immutable-record model.
+- **TASK-005:** Define authorization matrix for technician, planner, senior engineer, and administrative roles.
+- **TASK-006:** Define error, correlation-ID, audit, and observability standards.
+
+### Mobile client
+
+- **TASK-010:** Implement Ionic/Angular application shell and navigation based on the four supplied screens.
+- **TASK-011:** Implement SCR-01 queue, sorting, refresh/update behavior, and stale-data indicators.
+- **TASK-012:** Implement SCR-02 asset detail, service history, fault-code display, and diagnostics entry point.
+- **TASK-013:** Implement SCR-03 labour, parts, scanning/selection, notes, camera, and upload status.
+- **TASK-014:** Implement SCR-04 meter readings, signature capture, validation, discrepancy display, and closure.
+- **TASK-015:** Implement encrypted local store and durable offline synchronization queue.
+- **TASK-016:** Implement conflict handling, idempotent retries, and user-visible sync status.
+- **TASK-017:** Implement accessibility and field-usability refinements.
+
+### Work-order API and database
+
+- **TASK-020:** Implement queue and assignment APIs.
+- **TASK-021:** Implement work-order state-transition rules.
+- **TASK-022:** Implement asset and service-history retrieval with cache/staleness behavior.
+- **TASK-023:** Implement service-entry and parts-line APIs.
+- **TASK-024:** Implement transactional closure and duplicate-submission protection.
+- **TASK-025:** Implement completion-record generation and audit events.
+- **TASK-026:** Implement authorization, input validation, rate limits, and API telemetry.
+
+### Integrations
+
+- **TASK-030:** Confirm enterprise asset-management contracts, fields, identity, timeout, and availability commitments.
+- **TASK-031:** Implement asset/work-order adapter with three retries, exponential backoff, jitter, and cached fallback.
+- **TASK-032:** Confirm inventory movement contract and stock semantics.
+- **TASK-033:** Implement idempotent inventory movement adapter with three-second timeout behavior as specified.
+- **TASK-034:** Implement integration alerts, dead-letter/retry handling, reconciliation, and operational dashboards.
+- **TASK-035:** Validate upstream behavior for assignment, acceptance, reassignment, closure, and stale-data scenarios.
+
+### Evidence and retention
+
+- **TASK-040:** Provision Blob Storage containers and managed-identity access.
+- **TASK-041:** Configure immutability policy and legal/asset-retention settings.
+- **TASK-042:** Implement evidence upload, retry, checksum/integrity metadata, and read-only behavior after closure.
+- **TASK-043:** Implement signature-image storage and access controls.
+- **TASK-044:** Test retention, immutability, deletion prevention, and authorized retrieval.
+
+### Diagnostics agent workflow
+
+- **TASK-050:** Confirm approved Foundry project, model deployments, content index, and data boundaries.
+- **TASK-051:** Implement fault-triage and troubleshooting retrieval agents using Microsoft Agent Framework.
+- **TASK-052:** Route model traffic through APIM using managed identity.
+- **TASK-053:** Implement human approval gate and ensure no agent action can mutate asset or work-order state.
+- **TASK-054:** Implement content-safety, quotas, telemetry, prompt-injection defenses, and failure fallback.
+- **TASK-055:** Define evaluation set for fault-code matching, retrieval quality, unsafe recommendations, and unsupported-fault escalation.
+
+### Quality and delivery
+
+- **TASK-060:** Configure GitHub Actions build, test, security scanning, provenance attestation, and environment protection.
+- **TASK-061:** Create unit, API contract, integration, mobile, offline-sync, accessibility, and end-to-end test suites.
+- **TASK-062:** Execute performance testing against the under-two-second target.
+- **TASK-063:** Execute resilience, failover, retry, and reconciliation testing.
+- **TASK-064:** Execute security, device-compliance, authorization, and threat-model validation.
+- **TASK-065:** Conduct pilot/UAT with technicians and planners.
+- **TASK-066:** Prepare operational runbooks, support procedures, and release-readiness evidence.
+
+---
+
+## 6. Traceability summary
+
+| Requirement source | Proposed coverage |
+|---|---|
+| EPIC-01 Field Service Work Orders | EPIC-01 |
+| FEAT-01 Queue and Dispatch | FEAT-01, US-101, US-102, TASK-011, TASK-020–021 |
+| FEAT-02 Asset Detail and Diagnostics | FEAT-02, US-201, US-202, TASK-012, TASK-022, TASK-050–055 |
+| FEAT-03 Service Log and Parts | FEAT-03, US-301, US-302, TASK-013, TASK-023, TASK-032–033, TASK-040–044 |
+| FEAT-04 Completion and Sign-off | FEAT-04, US-401, US-402, TASK-014, TASK-024–025, TASK-040–044 |
+| SCR-01 through SCR-04 UX mockups | Corresponding feature screens and mobile-client tasks |
+| Performance under two seconds | NFR-01, TASK-062 |
+| 99.9% shift-hours availability | NFR-02, TASK-063 |
+| Full offline capture and sync | NFR-03, TASK-015–016, TASK-061–063 |
+| Entra ID, MFA/device trust | NFR-04, TASK-005, TASK-064 |
+| WCAG 2.1 AA and field usability | NFR-05, TASK-017, TASK-061 |
+| Seven-year immutable evidence retention | NFR-06, TASK-040–044 |
+| Foundry, Agent Framework, APIM, human approval | NFR-07, TASK-050–055 |
+
+## 7. Dependencies
+
+| Dependency | Required decision or capability | Owner to confirm |
 |---|---|---|
-| FEAT-01 | Work Order Queue and Dispatch | Requirements, SCR-01, US-101–US-102 |
-| FEAT-02 | Asset Detail and Diagnostics | Requirements, SCR-02, US-201–US-202 |
-| FEAT-03 | Service Log and Parts | Requirements, SCR-03, US-301–US-302 |
-| FEAT-04 | Completion and Sign-off | Requirements, SCR-04, US-401–US-402 |
-| FEAT-NFR | Cross-cutting quality, security, offline, and operational controls | Technical Requirements and NFR section |
+| Enterprise asset-management system | Work-order, assignment, asset, fault-code, service-history, and closure contracts | Integration Platform / EAM owner |
+| Inventory system | Stock availability, reservation/substitution, movement, and idempotency semantics | Inventory-system owner |
+| Identity platform | Entra groups, Conditional Access, Intune compliance, managed identities | Security / Identity |
+| Foundry and APIM | Approved project, deployments, quotas, policies, content index, monitoring | AI Engineering / Platform |
+| Retention policy | Seven-year retention and immutability/legal-hold requirements | Asset governance / Legal |
+| Device estate | Supported Android handhelds, camera/scanner capabilities, OS versions | Field Operations |
+| UX specification | Extractable screen behavior, validation, error states, offline indicators, and accessibility details | Product / UX |
+| Availability design | RTO, RPO, warm-standby activation, and operational ownership | Platform Operations |
+| Diagnostic content | Authoritative troubleshooting procedures and escalation ownership | Maintenance Engineering |
 
----
+## 8. Risks and mitigations
 
-# 3. Proposed user stories and acceptance criteria
-
-The identifiers below preserve the IDs in the requirements document. Additional acceptance criteria are proposed to make implementation and testing more explicit.
-
-## FEAT-01 — Work Order Queue and Dispatch
-
-### US-101 — View prioritized assigned work orders
-
-**Story:**  
-As a technician, I want to see my assigned work orders ranked by SLA risk and asset criticality so I can work my route in the right order.
-
-**Acceptance criteria:**
-
-1. Given open assigned work orders exist, when the queue loads, orders are sorted by:
-   1. SLA risk, highest risk first.
-   2. Asset criticality, highest criticality first.
-2. Each queue item displays sufficient dispatch context, including work-order identifier, priority or SLA state, asset identifier, location, and current status.
-3. A newly assigned work order appears in the technician’s queue within **30 seconds**, without manual refresh, when connectivity is available.
-4. When the upstream work-order system is unavailable, the client displays the last synchronized queue timestamp and identifies stale data.
-5. Only work orders authorized for the signed-in technician are displayed.
-6. Queue loading and asset-detail rendering meet the target of **under two seconds over the site network**, subject to an agreed measurement method.
-
-### US-102 — Accept or reassign a work order
-
-**Story:**  
-As a technician, I want to accept or reassign a work order so dispatch always reflects who is actually working it.
-
-**Acceptance criteria:**
-
-1. Given an unaccepted order, when the technician accepts it, the work-order status changes to **In Progress**.
-2. The planner and upstream work-order system receive the status change when connectivity is available.
-3. A reassignment requires a reason before submission.
-4. The reassignment reason, previous assignee, new assignee, actor, and timestamp are recorded against the work order.
-5. Unauthorized users cannot reassign work orders.
-6. Repeated submission caused by retry or reconnect does not create duplicate transitions or audit entries.
-7. If the transition cannot be synchronized, the client clearly shows the pending state and does not represent the change as confirmed by the system of record.
-
----
-
-## FEAT-02 — Asset Detail and Diagnostics
-
-### US-201 — View asset details and service history
-
-**Story:**  
-As a technician, I want to view an asset’s active fault codes and recent service events so I can diagnose without calling the plant office.
-
-**Acceptance criteria:**
-
-1. Given a work order for an asset, the asset view displays asset ID, type, location, and active fault codes.
-2. The ten most recent service events are displayed newest first when history exists.
-3. The source and last-refresh time are visible where data may be stale.
-4. If the asset-management system is unavailable, a cached asset record may be shown and is marked stale.
-5. Asset and work-order data are protected according to the signed-in user’s authorization.
-6. The view remains available offline for an accepted order if the data was previously synchronized.
-
-### US-202 — Use guided troubleshooting
-
-**Story:**  
-As a technician, I want guided troubleshooting steps for the reported fault so common issues resolve on the first visit.
-
-**Acceptance criteria:**
-
-1. Given a known fault code, matching troubleshooting steps are displayed in order.
-2. Diagnostic content identifies the relevant fault code or retrieval basis.
-3. Given no matching content, the application offers escalation to a senior engineer and records the gap.
-4. Agent-generated or retrieved suggestions are advisory only and cannot directly operate an asset or change work-order state.
-5. The workflow includes the required human approval step before a suggested action is presented as an actionable recommendation to the technician.
-6. All model traffic is routed through Azure API Management.
-7. Model requests and responses are handled under approved content-safety, privacy, quota, and observability policies.
-8. If the agent service is unavailable, the technician can continue with available static or previously cached diagnostic content and receives a clear unavailable-state message.
-9. Diagnostic outputs are traceable to the work order, fault code, agent workflow, and content source where applicable.
-
----
-
-## FEAT-03 — Service Log and Parts
-
-### US-301 — Log labour and consumed parts
-
-**Story:**  
-As a technician, I want to log labour time and the parts I used so inventory and cost reporting stay accurate.
-
-**Acceptance criteria:**
-
-1. The technician can enter labour time against a work order.
-2. A part can be scanned or selected.
-3. When a valid part log is saved, the inventory system decrements on-hand stock exactly once.
-4. Each inventory movement includes an idempotency key associated with the parts line.
-5. Retries, reconnects, and duplicate client submissions do not produce duplicate stock movements.
-6. If the part is out of stock, the entry is blocked and the application offers the approved substitute or back-order path.
-7. If inventory cannot be reached, the application does not falsely confirm stock consumption; it records a pending or failed state according to the approved offline policy.
-8. The service log is auditable, including technician, timestamp, quantity, part, and work-order association.
-9. Offline entries are retained locally and synchronized when connectivity returns.
-
-### US-302 — Attach photographs and notes
-
-**Story:**  
-As a technician, I want to attach photos and notes to a work order so the record supports later warranty or dispute claims.
-
-**Acceptance criteria:**
-
-1. The technician can attach photographs and notes to an open work order.
-2. A photograph captured offline is queued locally and uploaded when connectivity returns.
-3. Upload retry is safe and does not create duplicate evidence records.
-4. Upload status is visible to the technician.
-5. Evidence is stored in Azure Blob Storage through the approved service boundary.
-6. When an order is closed, its attachments and notes become read-only.
-7. Failed uploads are retained for retry or surfaced as an exception requiring resolution before closure, according to the approved policy.
-8. Evidence metadata includes work order, uploader, capture or upload time, and integrity information where required.
-
----
-
-## FEAT-04 — Completion and Sign-off
-
-### US-401 — Capture sign-off and verified meter readings
-
-**Story:**  
-As a technician, I want to capture site-contact sign-off with verified meter readings so the work order meets completion policy.
-
-**Acceptance criteria:**
-
-1. A work order must contain at least one service entry before closure can be requested.
-2. A site-contact signature is mandatory for closure.
-3. A meter reading is mandatory for closure.
-4. Readings outside the approved tolerance are rejected and create a discrepancy.
-5. The closure workflow clearly identifies missing, invalid, or out-of-tolerance information.
-6. Closure cannot proceed while mandatory discrepancies remain unresolved or explicitly approved through the designated exception process.
-7. Signature and meter-reading data are associated with the work order, technician, site contact, and timestamp.
-8. The closure operation is idempotent and cannot create multiple completion records.
-
-### US-402 — Produce an immutable completion record
-
-**Story:**  
-As a maintenance planner, I want every closed order to produce a tamper-evident record so I can answer an audit without reconstructing history.
-
-**Acceptance criteria:**
-
-1. When an order is closed, a timestamped completion record is created.
-2. The record includes technician, site contact, parts, labour, readings, notes, attachments, closure time, and relevant work-order history.
-3. The completion record is written transactionally with the closure state.
-4. The record and associated evidence cannot be edited after closure.
-5. Closed-order evidence is stored in an immutable Blob Storage container or equivalent approved retention control.
-6. Records are retained for **seven years**, or for the period configured by the approved asset-retention policy if that policy supersedes the technical default.
-7. The record supports integrity verification and audit retrieval.
-8. Attempts to modify a closed order are rejected and audited.
-
----
-
-# 4. Cross-cutting non-functional requirements
-
-| ID | Requirement | Proposed verification |
+| Risk | Impact | Mitigation |
 |---|---|---|
-| NFR-01 | Work queue and asset detail render in under two seconds over the site network | Performance test using agreed device, network, dataset, and percentile |
-| NFR-02 | Service platform availability target of 99.9% during shift hours | Monitoring and availability reporting |
-| NFR-03 | Accepted orders can be viewed and work can be logged offline | Device-level offline scenario tests |
-| NFR-04 | Synchronization is durable, retryable, and idempotent | Reconnect, duplicate request, conflict, and failure-injection tests |
-| NFR-05 | Entra ID SSO with MFA and Intune-compliant managed devices | Conditional-access and negative authorization tests |
-| NFR-06 | Mobile interface conforms to WCAG 2.1 AA and supports gloves and low-light use | Accessibility audit and field usability test |
-| NFR-07 | Closed records and evidence are immutable and retained for seven years | Storage-policy, modification-attempt, and audit tests |
-| NFR-08 | All model traffic uses APIM with managed identity, quotas, content safety, and observability | Gateway configuration and integration tests |
-| NFR-09 | App Service uses Premium v3 with zone redundancy and paired-region warm standby | Architecture and resilience validation |
-| NFR-10 | CI/CD uses GitHub Actions with provenance attestation and environment protection rules | Pipeline review and deployment-control test |
+| Upstream API contracts or availability are not confirmed | Integration rework and unreliable queue/stock behavior | Complete contract discovery and consumer-driven contract tests before integration build |
+| Offline conflict semantics are undefined | Duplicate movements or incorrect work-order state | Define state-transition ownership, idempotency keys, conflict rules, and reconciliation UI |
+| Inventory API cannot guarantee idempotent movement | Incorrect stock balances | Require idempotency support or introduce a controlled movement ledger and reconciliation process |
+| Retention/immutability policy is not finalized | Compliance and evidence-integrity failure | Obtain written policy approval before provisioning production-like retention settings |
+| UX mockups are image-only and lack interaction specifications | Ambiguous implementation and UAT defects | Review annotated flows, validation rules, error states, device targets, and accessibility behavior |
+| Agent recommendations are inaccurate or unsafe | Technician may follow harmful guidance | Human approval, advisory-only behavior, curated content, safety filters, evaluation set, and escalation path |
+| Model or content-index outage affects diagnostics | Reduced first-visit resolution | Provide explicit unavailable state and manual troubleshooting/escalation path |
+| Seven-year evidence retention increases storage and privacy exposure | Cost and data-governance risk | Confirm retention basis, encryption, access reviews, lifecycle controls, and cost estimates |
+| Availability target conflicts with upstream dependencies | End-to-end target may be unattainable | Define whether the target applies to the platform alone or the complete user journey |
+| Device/network conditions differ from assumptions | Poor field usability | Pilot on representative managed devices and actual plant networks |
+| Requirements source is incomplete/truncated in the supplied extract | Missed requirements | Validate against complete source documents before baselining the backlog |
 
----
+## 9. Open decisions required before baseline
 
-# 5. Proposed implementation tasks
+1. Confirm whether the requirements and technical documents are approved for implementation, rather than draft/demo inputs.
+2. Confirm the complete non-functional-requirements section; the supplied requirements extract ends during the security/accessibility content.
+3. Define SLA-risk calculation, tie-breaking rules, and asset-criticality source.
+4. Define valid work-order states and who may perform each transition.
+5. Define reassignment permissions and whether planner approval is required.
+6. Define meter-reading types, units, tolerances, and discrepancy workflow.
+7. Identify the authoritative asset-retention policy and confirm the seven-year period.
+8. Clarify the human approval point in the diagnostics workflow.
+9. Confirm whether offline creation of new work orders is out of scope; the current requirement explicitly guarantees offline work on an accepted order.
+10. Confirm inventory behavior for substitute and back-order options.
+11. Confirm supported devices, Android versions, scanner behavior, and camera/file constraints.
+12. Define availability measurement scope, shift hours, RTO, and RPO.
+13. Confirm data-classification, privacy, and audit requirements for signatures, photographs, and diagnostic telemetry.
+14. Provide detailed UX annotations and navigation/error-state specifications.
 
-## EPIC-01 / Foundation and architecture
+## 10. Proposed approval gates
 
-- **TASK-001:** Confirm domain model and ownership boundaries.
-  - Work-order system of record: enterprise asset management system.
-  - Inventory system of record: inventory system.
-  - Execution record owner: this application.
-- **TASK-002:** Define API contracts and OpenAPI schemas for queue, work order, asset, diagnostics, service entries, parts, evidence, closure, and synchronization.
-- **TASK-003:** Define authorization model for technicians, planners, senior engineers, and administrators.
-- **TASK-004:** Establish Azure SQL schema, migrations, audit tables, and optimistic-concurrency strategy.
-- **TASK-005:** Establish Blob Storage containers, metadata model, encryption, retention, and immutability policy.
-- **TASK-006:** Define correlation IDs, audit events, telemetry, alerts, and operational dashboards.
-- **TASK-007:** Define Dev environment configuration and secret/managed-identity boundaries without embedding secrets in source control.
+### Gate A — Requirements baseline
 
-## FEAT-01 tasks
+Approval required from product owner, maintenance operations, security, and integration owners for:
 
-- **TASK-101:** Implement queue API and SLA-risk/criticality ordering.
-- **TASK-102:** Implement Ionic queue screen based on SCR-01.
-- **TASK-103:** Implement assignment, acceptance, reassignment, and reason capture.
-- **TASK-104:** Implement real-time or short-interval queue refresh within the 30-second requirement.
-- **TASK-105:** Implement stale-data indicators and cached queue behavior.
-- **TASK-106:** Test authorization, concurrent assignment changes, and duplicate state transitions.
+- Scope and personas.
+- Work-order lifecycle.
+- Completion policy.
+- Offline behavior.
+- Retention and audit requirements.
+- Open decisions listed above.
 
-## FEAT-02 tasks
+### Gate B — Architecture and integration readiness
 
-- **TASK-201:** Implement asset and service-history adapter.
-- **TASK-202:** Implement asset detail screen based on SCR-02.
-- **TASK-203:** Implement fault-code and recent-history retrieval, caching, and stale-state handling.
-- **TASK-204:** Configure Foundry diagnostic and troubleshooting agents through Microsoft Agent Framework.
-- **TASK-205:** Implement APIM routing, managed identity, quotas, content safety, and telemetry for model calls.
-- **TASK-206:** Implement human approval gate for diagnostic recommendations.
-- **TASK-207:** Implement escalation and no-match recording.
-- **TASK-208:** Test agent unavailability, unsafe content, prompt/data isolation, and traceability.
+Approval required before implementation proceeds beyond foundational scaffolding:
 
-## FEAT-03 tasks
+- API contracts.
+- Identity and authorization model.
+- Offline synchronization/conflict design.
+- Inventory idempotency approach.
+- Evidence immutability configuration.
+- Agent/APIM governance design.
+- Availability and disaster-recovery design.
 
-- **TASK-301:** Implement service-entry and labour APIs.
-- **TASK-302:** Implement parts scanning and selection.
-- **TASK-303:** Implement inventory adapter with idempotency keys, retries, backoff, and reconciliation.
-- **TASK-304:** Implement service-log screen based on SCR-03.
-- **TASK-305:** Implement local offline store and durable synchronization queue.
-- **TASK-306:** Implement photo capture, compression or size policy, upload queue, retry, and status.
-- **TASK-307:** Implement notes and read-only behavior after closure.
-- **TASK-308:** Test duplicate submissions, stock conflicts, offline capture, and reconnect behavior.
+### Gate C — Dev validation
 
-## FEAT-04 tasks
+Evidence required:
 
-- **TASK-401:** Implement meter-reading validation and tolerance rules.
-- **TASK-402:** Implement site-contact signature capture.
-- **TASK-403:** Implement completion screen based on SCR-04.
-- **TASK-404:** Implement closure transaction and concurrency controls.
-- **TASK-405:** Generate completion record and integrity metadata.
-- **TASK-406:** Apply Blob immutability and retention controls.
-- **TASK-407:** Implement audit retrieval and integrity verification.
-- **TASK-408:** Test closure failure, retry, out-of-tolerance readings, and post-closure modification attempts.
+- Automated test results.
+- Contract and integration test results.
+- Offline and retry testing.
+- Security and accessibility findings.
+- Performance measurements.
+- Agent evaluation results.
+- No unresolved critical defects.
 
-## Cross-cutting quality and delivery tasks
+### Gate D — Pilot/UAT approval
 
-- **TASK-501:** Establish unit, API, integration, contract, UI, accessibility, performance, security, and resilience test suites.
-- **TASK-502:** Configure GitHub Actions build, test, provenance attestation, and protected deployment stages.
-- **TASK-503:** Configure App Service, SQL, Blob, APIM, monitoring, and alerting for Dev.
-- **TASK-504:** Conduct device and field-network testing on managed Android handhelds.
-- **TASK-505:** Conduct threat modeling and privacy review for signatures, photos, asset data, and model interactions.
-- **TASK-506:** Prepare operational runbooks for synchronization failures, inventory reconciliation, evidence upload failures, and integration outages.
-- **TASK-507:** Prepare data migration or initial synchronization strategy, if existing work orders must be loaded into the application.
-
----
-
-# 6. Dependencies
-
-| Dependency | Owning area | Impact |
-|---|---|---|
-| Enterprise asset-management REST contract and test environment | Integration Platform / EAM owner | Queue, asset details, status transitions, and history |
-| Inventory movement API and stock/substitute rules | Inventory owner | Parts logging and stock accuracy |
-| Work-order assignment and planner permissions | Maintenance Operations | Acceptance, reassignment, and dispatch behavior |
-| SLA-risk and asset-criticality definitions | Maintenance Operations | Queue ordering |
-| Meter types, units, and tolerance rules | Asset/EAM and maintenance policy owners | Closure validation |
-| Site-contact identity and signature policy | Operations / Legal or compliance | Completion sign-off |
-| Seven-year retention and immutability policy | Records/Compliance | Completion record and evidence storage |
-| Foundry model deployments and troubleshooting content index | AI Engineering | Diagnostic assistance |
-| Human approval policy for agent recommendations | AI Governance / Operations | Diagnostic workflow |
-| Intune enrollment and conditional-access policy | Identity/Endpoint team | Authentication and device access |
-| Dev Azure subscriptions, managed identities, and network access | Platform Operations | Environment deployment |
-| UX specification details contained in mockup panels | UX owner | Screen-level implementation and accessibility |
-| Approved availability and performance measurement method | Platform/Product | NFR sign-off |
-
----
-
-# 7. Risks and proposed mitigations
-
-| Risk | Severity | Mitigation / decision needed |
-|---|---:|---|
-| Offline synchronization may create conflicts or duplicate stock movements | High | Define operation IDs, idempotency keys, conflict rules, reconciliation UI, and failure-state semantics before implementation |
-| Closure may become partially committed across SQL, Blob, and upstream systems | High | Use a transactional closure boundary, an outbox or workflow pattern, and explicit completion-record generation status |
-| Technical requirements are marked **Draft**, while no approved artifacts were supplied | High | Obtain product, architecture, security, and UX approval before code-generation or implementation gates |
-| Requirements document text appears truncated at the accessibility section | Medium | Retrieve and review the complete source document, especially remaining NFRs, assumptions, and out-of-scope content |
-| Reassignment permissions and target-assignee selection are undefined | High | Confirm who may reassign, which users are eligible, and whether planner approval is required |
-| SLA-risk ordering is not mathematically defined | Medium | Approve SLA-risk calculation, tie-breakers, and behavior when data is missing or stale |
-| Meter tolerance rules are unspecified | High | Define tolerance by asset/meter type, units, precision, and discrepancy workflow |
-| Inventory substitute and back-order behavior is unspecified | High | Confirm source of substitute data, reservation rules, and whether offline parts capture is permitted |
-| Agent recommendations may expose sensitive operational data or produce unsafe guidance | High | Enforce APIM, content safety, grounding, human approval, auditability, and no direct actuation |
-| Seven-year evidence retention may conflict with privacy or legal requirements | Medium | Obtain records-management and privacy approval for signatures, photographs, deletion holds, and access |
-| 99.9% platform availability may not be achievable if upstream systems target 99.5% | High | Define service-level boundaries, degraded-mode behavior, and reporting responsibilities |
-| UX mockups are image-based and detailed specifications are not available in extracted text | Medium | Obtain screen annotations, interaction states, error states, and responsive/mobile accessibility specifications |
-| Device/browser support and screen sizes are unspecified | Medium | Approve supported Android versions, handheld models, planner browser versions, camera/scanner capabilities, and storage limits |
-
----
-
-# 8. Open decisions and approval gates
-
-The following decisions should be resolved before implementation approval:
-
-1. **Requirements baseline**
-   - Confirm the requirements document is complete; the supplied text ends during the accessibility section.
-   - Confirm whether the technical requirements document remains draft or is approved as the architecture baseline.
-
-2. **Dispatch and permissions**
-   - Define technician versus planner permissions.
-   - Confirm whether technicians can reassign directly or only request reassignment.
-   - Define valid reassignment targets and approval workflow.
-
-3. **Offline behavior**
-   - Define which operations are permitted offline.
-   - Define conflict resolution when an order changes upstream while offline.
-   - Define whether parts consumption may be captured offline or only queued pending inventory confirmation.
-   - Define behavior when the same order is edited from multiple devices.
-
-4. **Completion policy**
-   - Define meter types, units, tolerance ranges, rounding, and discrepancy approval.
-   - Confirm whether closure requires successful synchronization with EAM and inventory.
-   - Confirm whether failed evidence uploads block closure.
-
-5. **AI governance**
-   - Approve the diagnostic agent scope, grounding sources, model deployments, and human approval step.
-   - Define what constitutes a recommendation requiring approval.
-   - Confirm retention and audit requirements for prompts, responses, and retrieved content.
-   - Confirm that no agent may initiate external actions or mutate system-of-record data.
-
-6. **Security and data**
-   - Confirm data classification for work orders, photographs, signatures, and asset information.
-   - Confirm authorization model, audit access, and privacy requirements.
-   - Confirm managed-device and conditional-access policies are available in Dev.
-
-7. **Non-functional targets**
-   - Define test conditions for the two-second performance target.
-   - Define shift hours and measurement boundaries for 99.9% availability.
-   - Confirm supported devices, operating systems, browsers, and low-connectivity conditions.
-
-8. **Retention and immutability**
-   - Approve seven-year retention as the default.
-   - Confirm legal hold, export, audit retrieval, and deletion/expiry behavior.
-   - Confirm the Azure Blob immutability policy and lock mode.
-
----
-
-# 9. Proposed Definition of Ready
-
-A story is ready for implementation when:
-
-- Business rules and authorization are approved.
-- Relevant UX states, including loading, offline, error, empty, and conflict states, are available.
-- API contracts and upstream dependencies are documented.
-- Test data and integration environments are available or explicitly mocked.
-- Offline and idempotency behavior is specified where applicable.
-- Security and privacy classification is known.
-- Acceptance criteria are testable and linked to the source requirement.
-- No unresolved decision can materially change the implementation approach.
-
-# 10. Proposed Definition of Done
-
-A story is done when:
-
-- Implementation is complete and peer reviewed.
-- Automated unit and integration tests pass.
-- Relevant acceptance criteria pass in Dev.
-- Accessibility, security, and offline behavior are tested where applicable.
-- Telemetry, audit events, and failure handling are implemented.
-- API and UX documentation are updated.
-- No secrets are stored in source control.
-- Evidence of test results is attached to the work item.
-- Required human approval gates have been completed.
+Approval required from representative technicians, planners, product owner, and operational support before any broader deployment.
 
 ## Recommendation
 
-Approve this as a **planning baseline only**, subject to resolution of the open decisions above. Do not authorize code generation or production-impacting integration work until the requirements, technical architecture, UX details, security controls, and AI governance decisions are formally approved.
+**Proceed to requirements clarification and architecture-readiness review only.** Baseline the proposed hierarchy after the open decisions are resolved and the complete source documents, detailed UX specifications, and upstream integration contracts are confirmed. No external system or repository change has been performed.
