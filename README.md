@@ -134,32 +134,23 @@ these repository secrets and variables first:
 ## Published links
 
 <!-- agentic-sdlc:published-links:start -->
-| Component | URL |
-| --- | --- |
-| UI | <https://field-service-work-orders-ui.azurewebsites.net> |
-| API | <https://field-service-work-orders-api.azurewebsites.net> |
-| Swagger UI | <https://field-service-work-orders-api.azurewebsites.net/docs> |
-| OpenAPI document | <https://field-service-work-orders-api.azurewebsites.net/openapi.json> |
-| Work Order API | <https://field-service-work-orders-api.azurewebsites.net/api/work-orders> |
-| API health probe | <https://field-service-work-orders-api.azurewebsites.net/health> |
-
-_Published and verified 2026-08-27 11:15 UTC by the Agentic SDLC DevOps & Release Agent via `deploy-azure.yml`. Smoke tests covered the health probe, Swagger/OpenAPI, the UI, and a create/update/delete round trip._
+_Populated automatically once the deployment pipeline succeeds._
 <!-- agentic-sdlc:published-links:end -->
 
 ## Requirements scope
 
-- **Database migrations** under `infrastructure/db/migrations/` creating/altering tables noted above plus indexes for SLA risk + criticality sorting.
-- **Configuration**: environment variables for APIM endpoint, Foundry agent IDs, Blob containers, tolerance thresholds, offline cache TTL.
-- **CI updates**: GitHub Actions workflow to run backend unit tests (pytest), frontend tests (Jest + Cypress component tests), linting, and DB migration check.
-- **Offline conflict handling**: implement per-record sync status + idempotent transition tokens to prevent duplicate state changes.
-- **Diagnostics agent latency**: wrap agent calls with timeout + fallback messaging; ensure UI doesn’t block critical path.
-- **Immutable completion enforcement**: DB transaction plus Blob legal hold to prevent edits; add monitoring for unauthorized write attempts.
-- **Inventory consistency**: idempotency keys plus reconciliation job for stuck “pending” entries.
-- **Attachment storage cost**: lifecycle management for drafts, immutability only on closure.
-- **Traceability**: Every change references corresponding user story ID and acceptance criteria.
-- **Security**: Verify Entra claim checks on every endpoint/component, no secrets committed, managed identity only.
-- **Offline behavior**: Ensure caches mark stale timestamps and UI indicates pending sync.
-- **Idempotency & concurrency**: Review transaction scopes, idempotency tokens, and retry logic.
+- **Domain models & schemas**
+- `apps/api/models/work_order.py`: SQLAlchemy models for `WorkOrder`, `Asset`, `ServiceEvent`, `DispatchSubscription`.
+- `apps/api/schemas/work_order.py`: Pydantic models for queue responses, accept/reassign payloads, diagnostics responses.
+- Add Alembic migration `apps/api/migrations/versions/<timestamp>_work_order_baseline.py`.
+- **Repository layer**
+- `apps/api/repositories/work_orders.py`: query helpers (ordered queue, asset summary, event history).
+- `apps/api/repositories/diagnostics.py`: stub to orchestrate diagnostics-agent call and persistence of guidance usage logs.
+- **Service layer**
+- `apps/api/services/distribution.py`: handles SLA / criticality ranking, new dispatch fan-out (SignalR/websocket or Azure Web PubSub stub).
+- `apps/api/services/diagnostics_agent.py`: wraps APIM call to Foundry/MAF, enforces “human approval” state machine and logs failures without blocking.
+- **Routers**
+- `apps/api/routers/work_orders.py`: REST routes for queue load, accept, reassign.
 
 ## Intake documents
 
