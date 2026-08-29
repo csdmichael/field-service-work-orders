@@ -10,15 +10,15 @@ Sprints are two weeks. Each sprint closes with a demo and an approval gate.
 
 ## Approved scope
 
-- **Database migrations** under `infrastructure/db/migrations/` creating/altering tables noted above plus indexes for SLA risk + criticality sorting.
-- **Configuration**: environment variables for APIM endpoint, Foundry agent IDs, Blob containers, tolerance thresholds, offline cache TTL.
-- **CI updates**: GitHub Actions workflow to run backend unit tests (pytest), frontend tests (Jest + Cypress component tests), linting, and DB migration check.
-- **Offline conflict handling**: implement per-record sync status + idempotent transition tokens to prevent duplicate state changes.
-- **Diagnostics agent latency**: wrap agent calls with timeout + fallback messaging; ensure UI doesn’t block critical path.
-- **Immutable completion enforcement**: DB transaction plus Blob legal hold to prevent edits; add monitoring for unauthorized write attempts.
-- **Inventory consistency**: idempotency keys plus reconciliation job for stuck “pending” entries.
-- **Attachment storage cost**: lifecycle management for drafts, immutability only on closure.
-- **Traceability**: Every change references corresponding user story ID and acceptance criteria.
-- **Security**: Verify Entra claim checks on every endpoint/component, no secrets committed, managed identity only.
-- **Offline behavior**: Ensure caches mark stale timestamps and UI indicates pending sync.
-- **Idempotency & concurrency**: Review transaction scopes, idempotency tokens, and retry logic.
+- `work-order-queue` (SCR-01): Renders prioritized list, handles real-time updates, accept/reassign actions.
+- `asset-detail` (SCR-02): Displays asset info, fault codes, service history, and diagnostics agent integration.
+- `offline-store` service: Manages local cache, sync queue, and durability for intermittent connectivity.
+- `api-client` service: Abstracts FastAPI endpoints, handles authentication (Entra ID), error handling, and retry logic.
+- `WorkOrder`: id, assetId, status, slaRisk, assetCriticality, assignedTo, etc.
+- `Asset`: id, type, location, faultCodes, serviceEvents[]
+- `ServiceEvent`: id, date, description, technician
+- `DiagnosticsResult`: faultCode, probableCauses[], troubleshootingSteps[]
+- `/queue` → Work Order Queue
+- `/order/:id` → Asset Detail & Diagnostics
+- Durable queue for work orders and asset data.
+- Sync triggers on connectivity restoration.
