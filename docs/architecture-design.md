@@ -1,186 +1,199 @@
-Architecture Advisor Agent – Design Stage Proposal  
-Field Service Work Orders – Technician Mobile App
+# Architecture Advisor Agent Proposal: Design Stage Review  
+**Project:** Field Service Work Orders  
+**Target Environment:** Dev  
+**Version:** 1.0 (Reviewable Proposal)
 
 ---
 
 ## 1. Architecture Overview
 
-### Context
-A mobile-first application for field technicians, supporting work order execution, asset diagnostics, parts logging, evidence capture, and completion sign-off. The solution demonstrates traceability and document management across Azure DevOps and SharePoint, integrating with enterprise asset management and inventory systems. It must operate reliably with intermittent connectivity, enforce data immutability on closure, and route all agent/model traffic through Microsoft Agent Framework and Azure API Management.
+### 1.1 Solution Context
+- **Purpose:** Technician mobile app for receiving, diagnosing, logging, and completing work orders, with traceability and document management across Azure DevOps and SharePoint.
+- **Scope:** Technician-facing mobile experience only (queue, asset detail, service log, completion/sign-off).
+- **Upstream Systems:** Enterprise Asset Management (EAM), Inventory, Azure DevOps, SharePoint.
+- **Key Constraints:**  
+  - Intermittent connectivity (offline-first, robust sync)
+  - Immutable completion records
+  - Managed device and Entra ID SSO
+  - All model/agent operations via Microsoft Agent Framework and Azure API Management (APIM)
+
+### 1.2 High-Level Architecture Diagram (Textual)
+```
+[Technician Mobile (Ionic/Angular)]
+      |
+      v
+[FastAPI Service Layer (Azure App Service)]
+      |
+      |---[Azure SQL Database] (Work orders, logs, completion records)
+      |---[Azure Blob Storage] (Photos, signatures, immutable evidence)
+      |---[Integration Adapter]
+              |---[EAM System (REST)]
+              |---[Inventory System (REST)]
+      |---[APIM]---[Microsoft Agent Framework (Foundry)]
+```
 
 ---
 
-## 2. Architecture Recommendations
-
-### 2.1 Solution Architecture Diagram (Textual)
-
-**Technician Device (Android, Intune-managed)**
-↓
-**Ionic 8 + Angular 18 Mobile Client**
-↓
-**Python 3.12 FastAPI Service Layer (Azure App Service, Premium v3)**
-↓
-- **Azure SQL Database:** Work orders, service logs, completion records (strongly relational, transactional consistency)
-- **Azure Blob Storage:** Photos, signatures (immutable containers for closed orders)
-- **Integration Adapter:** RESTful connectors to:
-  - **Enterprise Asset Management System:** Asset/work order/service history (OAuth 2.0, managed identity)
-  - **Inventory System:** Parts stock/movement (idempotency, managed identity)
-↓
-**Microsoft Agent Framework (Foundry) via Azure API Management**
-- Fault triage and troubleshooting retrieval agents (APIM for authentication, quota, content safety)
-
----
-
-### 2.2 Component Boundaries
-
-| Component              | Responsibility                               | Hosting/Runtime                | Owner                |
-|------------------------|----------------------------------------------|-------------------------------|----------------------|
-| Mobile Client          | UI, offline store, sync queue                | Ionic/Angular, Android/Intune | Field Apps Team      |
-| Work Order API         | State transitions, business rules, evidence  | FastAPI, Azure App Service    | Field Apps Team      |
-| Integration Adapter    | Upstream/downstream system connectors        | FastAPI, Azure App Service    | Integration Platform |
-| Diagnostics Agent      | Fault triage, troubleshooting retrieval      | Foundry, Agent Framework      | AI Engineering Team  |
-| Evidence Store         | Immutable photo/signature storage            | Azure Blob Storage            | Platform Ops Team    |
-
----
-
-## 3. Decision Records
+## 2. Architecture Decision Records (ADRs)
 
 ### ADR-001: Technology Stack
-- **Frontend:** Angular 18 + Ionic 8 (native camera/barcode, offline store)
-- **Backend:** Python 3.12 FastAPI (typed models, OpenAPI contract)
-- **Database:** Azure SQL Database (relational, transactional, immutable records)
-- **Evidence:** Azure Blob Storage (immutable containers for closed orders)
-- **Agent/AI:** Microsoft Foundry + Agent Framework, routed via Azure API Management
-- **Identity:** Entra ID, conditional access, Intune device compliance
-- **CI/CD:** GitHub Actions (build provenance, environment protection)
+- **Frontend:** Angular 18 + Ionic 8 (TypeScript)
+- **Backend:** Python 3.12 + FastAPI
+- **Database:** Azure SQL Database (strongly relational, transactional)
+- **Evidence Store:** Azure Blob Storage (immutable containers)
+- **Agentic Operations:** Microsoft Agent Framework via APIM
+- **Identity:** Entra ID SSO, Intune-compliant devices only
+- **CI/CD:** GitHub Actions (build provenance, environment protections)
+- **Hosting:** Azure App Service (Premium v3, zone redundant, warm standby)
 
-### ADR-002: Offline & Sync
-- Durable offline store in mobile client (service worker-backed)
-- Sync queue with idempotent operations; retries and conflict resolution
-- Evidence queued locally and uploaded on reconnect
-
-### ADR-003: Immutability & Audit
-- Completion record and evidence are immutable post-closure (Azure SQL, Blob Storage policies)
-- Tamper-evident record includes technician, site contact, parts, readings, timestamps
-
-### ADR-004: Integration
-- Managed identity for all upstream API calls
-- Exponential backoff, retries, idempotency keys for inventory movements
-- Serve cached asset record if upstream unavailable; mark stale and alert
-
-### ADR-005: Security & Accessibility
-- Entra ID SSO with MFA, device compliance required
-- WCAG 2.1 AA compliance for mobile UI
-- No OTP fallback; only managed devices
+**Rationale:**  
+- Stack aligns with platform standards and requirements for offline, native device features, and transactional consistency.
 
 ---
 
-## 4. Data & API Contracts
+### ADR-002: Offline-First & Synchronization
+- **Pattern:** Service worker-backed offline store in the mobile client; sync queue for deferred operations.
+- **Sync:** Idempotent, transactional sync logic in FastAPI service; retries and conflict resolution.
+- **Failure Handling:** Serve cached data, mark stale, raise alerts on integration failures.
 
-### 4.1 Work Order API (OpenAPI v3.1, summary)
-
-**Entities:**
-- WorkOrder: id, status, assignedTo, assetId, SLA, criticality, serviceEntries[], evidence[], completionRecord
-- Asset: id, type, location, faultCodes[], serviceHistory[]
-- ServiceEntry: id, workOrderId, partId, laborTime, notes, evidence[]
-- Evidence: id, workOrderId, type (photo, signature), blobUri, timestamp, immutable
-- CompletionRecord: id, workOrderId, meterReading, siteContactSignature, closedBy, closedAt, immutable
-
-**Endpoints:**
-- GET /workorders?assignedTo={userId}
-- POST /workorders/{id}/accept
-- POST /workorders/{id}/reassign
-- GET /assets/{id}
-- POST /workorders/{id}/serviceentry
-- POST /workorders/{id}/evidence
-- POST /workorders/{id}/complete
-- GET /workorders/{id}/completionRecord
-
-**API Contract Principles:**
-- All POST/PUT operations idempotent (idempotency-key header)
-- Evidence uploads use SAS token, enforce immutability on closure
-- CompletionRecord is read-only after closure
+**Rationale:**  
+- Ensures technicians can work without connectivity and data integrity is preserved.
 
 ---
 
-### 4.2 Integration Adapter
+### ADR-003: Immutable Completion Records
+- **Pattern:** On work order closure, write a tamper-evident, immutable record to Azure SQL and evidence to Blob Storage (immutable containers).
+- **Retention:** 7 years (per policy).
+- **Access:** Read-only after closure.
 
-- RESTful connectors to asset management and inventory systems
-- Managed identity authentication (OAuth 2.0 client credentials)
-- 2-3 second timeout, 3 retries with exponential backoff/jitter
-- Inventory movements use idempotency key per parts line
-
----
-
-### 4.3 Agent Workflow API
-
-- All agent/model calls routed via Azure API Management
-- Managed identity, per-user quota, content safety policies enforced
-- Sequential workflow: agent suggests, technician reviews, human approval required
+**Rationale:**  
+- Supports auditability and compliance.
 
 ---
 
-## 5. Threat Model Considerations
+### ADR-004: Agentic Workflow Integration
+- **Pattern:** All model/agent calls (fault triage, troubleshooting) routed via APIM to Microsoft Agent Framework (Foundry).
+- **Human-in-the-loop:** Agent suggestions are advisory only; technician approval required before action.
 
-- **Authentication:** Entra ID SSO, MFA, device compliance (Intune)
-- **Authorization:** Role-based access (technician, planner)
-- **Data Immutability:** Azure SQL and Blob Storage policies for closed orders/evidence
-- **Offline Risks:** Local evidence queue encrypted at rest; sync logic handles conflicts and retries
-- **API Security:** Managed identity for all upstream calls; APIM for agent/model traffic
-- **Evidence Tampering:** Blob Storage immutability, completion record hash/timestamp
-- **Privacy:** No PII beyond work order context; evidence stored per retention policy
-- **Accessibility:** UI tested for WCAG 2.1 AA, glove/low-light usability
+**Rationale:**  
+- Centralized enforcement, observability, and safety for AI/agent operations.
 
 ---
 
-## 6. Implementable Technical Plan
+## 3. Data and API Contracts
 
-### 6.1 Work Breakdown
+### 3.1 API Surface (FastAPI)
+- **/workorders**: List, accept, reassign, update status (GET/POST/PATCH)
+- **/assets/{id}**: Asset detail, fault codes, history (GET)
+- **/service-log**: Log labor, parts, photos, notes (POST)
+- **/completion**: Meter readings, signatures, close order (POST)
+- **/sync**: Offline data sync (POST/GET)
+- **/agent/diagnostics**: Fault triage, troubleshooting (POST via APIM)
 
-| Phase            | Key Tasks                                                                                   | Dependencies                   |
-|------------------|--------------------------------------------------------------------------------------------|--------------------------------|
-| UI/UX            | Build Ionic/Angular screens (SCR-01 to SCR-04), offline store, sync queue                   | UX mockups, requirements       |
-| API Layer        | Implement FastAPI endpoints, business rules, idempotency, evidence handling                 | OpenAPI contract, DB schema    |
-| Integration      | Build adapters for asset management/inventory, managed identity, retry logic                 | Upstream API contracts         |
-| Evidence Store   | Blob Storage setup, SAS token, immutability enforcement, offline queue                      | Azure Storage, FastAPI         |
-| Agent Workflow   | Integrate Foundry agents via APIM, sequential workflow, human approval                      | Agent Framework, APIM config   |
-| Security         | Entra ID SSO, device compliance, RBAC                                                      | Azure AD, Intune policies      |
-| Accessibility    | WCAG 2.1 AA testing, glove/low-light usability                                              | UI testing tools               |
-| CI/CD            | GitHub Actions pipeline, build provenance, environment protection                           | GitHub repo, Azure resources   |
+**Authentication:**  
+- All endpoints require Entra ID JWT, validated via Azure AD middleware.
 
-### 6.2 Key Implementation Risks
+**Idempotency:**  
+- Write endpoints require idempotency keys (for offline retry safety).
 
-- Offline evidence sync reliability
-- Immutability enforcement on closure
-- Upstream integration latency/failure
-- Accessibility compliance
-- Agent workflow error handling
+**Sample Data Contract (Work Order):**
+```json
+{
+  "id": "WO-123456",
+  "assetId": "ASSET-7890",
+  "status": "In Progress",
+  "slaRisk": "High",
+  "criticality": "A",
+  "assignedTo": "user@company.com",
+  "serviceEntries": [ ... ],
+  "attachments": [ ... ]
+}
+```
 
----
-
-## 7. Reviewable Proposal Summary
-
-- **Architecture:** Mobile client (Ionic/Angular), FastAPI backend, Azure SQL, Blob Storage, integration adapters, agent workflow via APIM
-- **Security:** Entra ID SSO, device compliance, managed identity, RBAC, evidence immutability
-- **Data/API Contracts:** OpenAPI v3.1, idempotency, immutable completion records, evidence uploads
-- **Threat Model:** Authentication, authorization, offline risks, evidence tampering, accessibility
-- **Technical Plan:** Phased implementation, clear component boundaries, integration dependencies, CI/CD pipeline
-
----
-
-**Next Steps:**  
-- Review and approve architecture recommendations, ADRs, API contracts, and threat model  
-- Confirm component ownership and integration boundaries  
-- Validate technical plan and risk mitigation strategies  
-- Proceed to implementation planning upon approval
+**Blob Storage Contract:**  
+- Container per work order, immutable after closure.
+- Metadata: work order ID, technician, timestamp, hash.
 
 ---
 
-**References:**  
-- [Requirements Summary](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/requirements-analysis.md)
-- [Technical Requirements](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/technical-requirements/Field-Service-Work-Orders-Technical-Requirements.docx)
-- [UX Mockups](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/ux-mockups/Field-Service-Work-Orders-UX-Mockups.docx)
+## 4. Threat Model Considerations
+
+### 4.1 Authentication & Authorization
+- Entra ID SSO with MFA, device compliance enforced via Intune.
+- Role-based access: Technician, Planner, Admin.
+
+### 4.2 Data Integrity & Immutability
+- Completion records and evidence are write-once; enforced by database constraints and Blob immutability policies.
+
+### 4.3 Offline Risks
+- Local data is encrypted at rest.
+- Sync logic prevents replay, duplication, or data loss.
+
+### 4.4 API & Integration Security
+- All external API calls use managed identity and OAuth2.
+- APIM enforces quotas, content safety, and logging for all agent/model calls.
+
+### 4.5 Privacy & Compliance
+- Evidence (photos, signatures) stored per retention policy, access logged.
+- No PII beyond operational necessity.
 
 ---
 
-**This proposal is ready for review and approval.**
+## 5. Implementable Technical Plan
+
+### 5.1 Component Breakdown
+
+| Component                | Owner                | Stack/Service            | Key Responsibilities                                |
+|--------------------------|----------------------|--------------------------|-----------------------------------------------------|
+| Mobile Client            | Field Apps Team      | Ionic 8, Angular 18      | UI, offline store, sync, device integration         |
+| Work Order API           | Field Apps Team      | FastAPI, Python 3.12     | Business logic, validation, sync, API contracts     |
+| Integration Adapter      | Integration Platform | FastAPI, Python 3.12     | EAM/inventory mapping, retries, idempotency         |
+| Agentic Workflow         | AI Engineering       | Foundry, Agent Framework | Diagnostics, troubleshooting, human-in-loop         |
+| Evidence Store           | Platform Ops         | Azure Blob Storage       | Immutable storage, retention, access control        |
+
+### 5.2 Sequence of Implementation
+
+1. **Set up Azure resources:** App Service, SQL, Blob Storage, APIM, Entra ID integration.
+2. **Develop FastAPI backend:**  
+   - Define OpenAPI contracts, implement endpoints, enforce idempotency.
+   - Integrate with EAM/Inventory via adapters.
+3. **Develop mobile client:**  
+   - Implement offline store, sync logic, UI per UX mockups.
+   - Integrate device camera, barcode, signature capture.
+4. **Implement agentic workflow:**  
+   - Route diagnostics/troubleshooting via APIM to Agent Framework.
+   - Enforce human-in-the-loop.
+5. **Configure evidence storage:**  
+   - Set up immutable containers, retention, and access policies.
+6. **CI/CD pipeline:**  
+   - GitHub Actions for build, test, deploy with environment protections.
+7. **Security hardening:**  
+   - Entra ID SSO, device compliance, API security, logging.
+8. **Testing:**  
+   - Unit, integration, offline/online sync, security, accessibility.
+9. **Documentation & handoff:**  
+   - API docs, runbooks, traceability matrix.
+
+---
+
+## 6. Review Checklist
+
+- [x] Stack and component boundaries align with requirements and constraints.
+- [x] API and data contracts defined for all major flows.
+- [x] Threat model addresses offline, immutability, agentic workflow, and integration risks.
+- [x] Technical plan is actionable and sequenced for parallel team execution.
+- [x] All model and system-of-record operations routed via Microsoft Agent Framework and APIM.
+- [x] No external system changes assumed without tool-verified output.
+
+---
+
+## 7. Open Questions / Approval Gates
+
+- Confirm EAM and Inventory API schemas for integration adapter mapping.
+- Validate Blob Storage immutability policy with compliance/legal.
+- Approve retention and access policy for evidence.
+- Confirm agentic workflow review/approval step with field operations.
+
+---
+
+**End of Proposal — Ready for review and human approval.**
