@@ -1,178 +1,177 @@
-**Field Service Work Orders – Plan Stage Requirements Proposal**
+## Requirements Agent Proposal: Plan Stage Review for "Field Service Work Orders"
+
+### 1. Project Overview
+
+**Project Name:** Field Service Work Orders  
+**Scope:** Technician-facing mobile app for receiving, diagnosing, logging, and completing work orders.  
+**Demo Context:** Traceability and document management across Azure DevOps and SharePoint.  
+**Target Environment:** Dev  
+**Stack:** Ionic/Angular frontend, Python FastAPI backend, Azure SQL, Blob Storage, Microsoft Agent Framework, Azure API Management.
 
 ---
 
-### 1. Epic
+### 2. Requirements Traceability Matrix
 
-**EPIC-01: Field Service Work Orders**
-> As a maintenance operations team, we want technicians to receive, diagnose, and complete work orders from a handheld device, so that asset downtime falls and every intervention leaves a complete, auditable record.
+#### Epic
 
----
-
-### 2. Features & User Stories
-
-#### FEAT-01: Work Order Queue and Dispatch
-**Description:** Live, prioritized list of open work orders ranked by SLA risk and asset criticality; technician can accept/reassign orders.
-
-- **US-101:** See assigned work orders ranked by SLA risk and asset criticality.
-  - **Acceptance Criteria:**
-    - Queue loads with open work orders sorted by SLA risk, then asset criticality.
-    - New dispatches appear within 30 seconds, no manual refresh required.
-  - **Tasks:**
-    - Implement queue rendering logic.
-    - Integrate real-time update mechanism.
-    - UX: SCR-01 mockup alignment.
-  - **Dependencies:** Asset management system integration; real-time sync.
-  - **Risks:** Delayed updates due to network issues.
-
-- **US-102:** Accept or reassign a work order.
-  - **Acceptance Criteria:**
-    - Accepting an order updates status to In Progress; planner sees change.
-    - Reassigning requires mandatory reason, recorded against order.
-  - **Tasks:**
-    - Implement accept/reassign actions.
-    - Record reason for reassignment.
-    - UX: SCR-01 mockup alignment.
-  - **Dependencies:** Work order API; planner interface.
-  - **Risks:** Data consistency on reassignment.
+| ID      | Title                          | Description                                                                                       |
+|---------|-------------------------------|---------------------------------------------------------------------------------------------------|
+| EPIC-01 | Field Service Work Orders      | As a maintenance operations team, we want technicians to receive, diagnose, and complete work orders from a handheld device, so that asset downtime falls and every intervention leaves a complete, auditable record. |
 
 ---
 
-#### FEAT-02: Asset Detail and Diagnostics
-**Description:** Asset identity, fault codes, guided troubleshooting, and service history in one place.
+#### Features
 
-- **US-201:** View asset’s active fault codes and recent service events.
-  - **Acceptance Criteria:**
-    - Asset ID, type, location, and active fault codes shown.
-    - Ten most recent service events listed, newest first.
-  - **Tasks:**
-    - Fetch and display asset/fault/service data.
-    - UX: SCR-02 mockup alignment.
-  - **Dependencies:** Asset management system; service history API.
-  - **Risks:** Incomplete data from upstream.
-
-- **US-202:** Guided troubleshooting steps for reported fault.
-  - **Acceptance Criteria:**
-    - Matching troubleshooting steps shown in order for known fault codes.
-    - If no match, escalation to senior engineer offered; gap recorded.
-  - **Tasks:**
-    - Integrate diagnostics agent workflow.
-    - Implement escalation and gap recording.
-    - UX: SCR-02 mockup alignment.
-  - **Dependencies:** Microsoft Foundry agent; APIM gateway.
-  - **Risks:** Agent workflow failure; escalation delays.
+| ID      | Title                         | Description                                                                                       | Screen Ref |
+|---------|-------------------------------|---------------------------------------------------------------------------------------------------|------------|
+| FEAT-01 | Work Order Queue & Dispatch   | Live, prioritized list of open work orders ranked by SLA risk and asset criticality.              | SCR-01     |
+| FEAT-02 | Asset Detail & Diagnostics    | Asset identity, fault codes, guided troubleshooting, and service history.                         | SCR-02     |
+| FEAT-03 | Service Log & Parts           | Log labor, parts, photos, notes; inventory decremented at use.                                    | SCR-03     |
+| FEAT-04 | Completion & Sign-off         | Verified meter readings, dual signature, tamper-evident completion record.                        | SCR-04     |
 
 ---
 
-#### FEAT-03: Service Log and Parts
-**Description:** Log labor time, parts used, photos, and notes; inventory decremented at point of use.
+#### User Stories & Acceptance Criteria
 
-- **US-301:** Log labor time and parts used.
-  - **Acceptance Criteria:**
-    - On saving, stock decremented once per part.
-    - Out-of-stock blocks entry; substitute/back-order offered.
-  - **Tasks:**
-    - Implement labor/parts logging.
-    - Integrate inventory API.
-    - UX: SCR-03 mockup alignment.
-  - **Dependencies:** Inventory system; offline store.
-  - **Risks:** Inventory sync errors; offline capture reliability.
+**FEAT-01: Work Order Queue & Dispatch**
 
-- **US-302:** Attach photos and notes to work order.
-  - **Acceptance Criteria:**
-    - Photos attached offline are queued and uploaded on reconnect.
-    - Attachments/notes become read-only after closure.
-  - **Tasks:**
-    - Implement photo/note attachment and offline queue.
-    - Enforce read-only state post-closure.
-    - UX: SCR-03 mockup alignment.
-  - **Dependencies:** Azure Blob Storage; offline sync.
-  - **Risks:** Evidence loss on sync failure.
+| ID     | User Story                                                                 | Acceptance Criteria                                                                                                      |
+|--------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| US-101 | As a technician, I want to see my assigned work orders ranked by SLA risk and asset criticality so I can work my route in the right order. | - Orders sort by SLA risk, then asset criticality.<br>- Queue updates within 30s of new dispatch, no manual refresh.     |
+| US-102 | As a technician, I want to accept or reassign a work order so dispatch always reflects who is actually working it. | - Accepting moves status to In Progress, planner sees change.<br>- Reassign requires mandatory reason, recorded against order. |
 
----
+**FEAT-02: Asset Detail & Diagnostics**
 
-#### FEAT-04: Completion and Sign-off
-**Description:** Verified meter readings, dual signature, tamper-evident completion record.
+| ID     | User Story                                                                 | Acceptance Criteria                                                                                                      |
+|--------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| US-201 | As a technician, I want to view an asset's active fault codes and recent service events so I can diagnose without calling the plant office. | - Asset ID, type, location, active fault codes shown.<br>- Ten most recent service events listed, newest first.          |
+| US-202 | As a technician, I want guided troubleshooting steps for the reported fault so common issues resolve on the first visit. | - Matching troubleshooting steps shown for known fault code.<br>- If no match, escalation offered and gap recorded.      |
 
-- **US-401:** Capture site-contact sign-off with verified meter readings.
-  - **Acceptance Criteria:**
-    - Closure requires site-contact signature and meter reading.
-    - Out-of-tolerance reading blocks closure; discrepancy raised.
-  - **Tasks:**
-    - Implement signature capture and meter reading validation.
-    - Discrepancy handling.
-    - UX: SCR-04 mockup alignment.
-  - **Dependencies:** Blob storage for signatures; validation logic.
-  - **Risks:** Signature capture reliability; closure blocking logic.
+**FEAT-03: Service Log & Parts**
 
-- **US-402:** Tamper-evident record for audit.
-  - **Acceptance Criteria:**
-    - Closed order produces timestamped, immutable record with all relevant data.
-    - Records retained per asset retention policy.
-  - **Tasks:**
-    - Implement immutable record creation.
-    - Enforce retention policy.
-    - UX: SCR-04 mockup alignment.
-  - **Dependencies:** Azure SQL; Blob Storage immutability.
-  - **Risks:** Data immutability enforcement.
+| ID     | User Story                                                                 | Acceptance Criteria                                                                                                      |
+|--------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| US-301 | As a technician, I want to log labor time and the parts I used so inventory and cost reporting stay accurate. | - On-hand stock decremented once per part.<br>- Out-of-stock blocks entry, substitute/back-order offered.                |
+| US-302 | As a technician, I want to attach photos and notes to a work order so the record supports later warranty or dispute claims. | - Offline photo attachment queued, uploaded on connectivity.<br>- Closed order attachments/notes become read-only.       |
+
+**FEAT-04: Completion & Sign-off**
+
+| ID     | User Story                                                                 | Acceptance Criteria                                                                                                      |
+|--------|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| US-401 | As a technician, I want to capture site-contact sign-off with verified meter readings so the work order meets completion policy. | - Site-contact signature and meter reading mandatory for closure.<br>- Out-of-tolerance reading blocks closure, raises discrepancy. |
+| US-402 | As a maintenance planner, I want every closed order to produce a tamper-evident record so I can answer an audit without reconstructing history. | - Closed order produces timestamped, immutable record.<br>- Record retained per asset retention policy.                  |
 
 ---
 
-### 3. Non-Functional Requirements (NFRs)
+#### Non-Functional Requirements
 
-| Category      | Requirement                                                        | Target                | Tasks / Risks                      |
-|---------------|--------------------------------------------------------------------|-----------------------|------------------------------------|
-| Performance   | Work queue and asset detail render over site network               | <2 seconds            | Optimize API and UI; network risk  |
-| Availability  | Service platform uptime during shift hours                        | 99.9%                 | Azure App Service config           |
-| Offline       | View accepted order and log work with no connectivity              | Full offline capture  | Durable offline store; sync risk   |
-| Security      | Authentication and device trust                                   | Entra ID SSO + MFA    | Device compliance; auth risk       |
-| Accessibility | Mobile interface usable with gloves and in low light               | WCAG 2.1 AA           | UI testing; accessibility risk     |
-
----
-
-### 4. Dependencies
-
-- **Asset Management System:** Source of work orders, asset data, service history.
-- **Inventory System:** Parts stock, movement API.
-- **Microsoft Foundry Agent Framework:** Diagnostics and troubleshooting agent.
-- **Azure API Management:** Model traffic routing, authentication, quotas.
-- **Azure SQL Database:** Work order, service entry, completion record storage.
-- **Azure Blob Storage:** Evidence (photos, signatures), immutability.
-- **Intune/Entra ID:** Device compliance and authentication.
+| Category      | Requirement                                                                 | Target           |
+|---------------|-----------------------------------------------------------------------------|------------------|
+| Performance   | Work queue and asset detail render over site network                        | <2 seconds       |
+| Availability  | Service platform uptime during shift hours                                  | 99.9%            |
+| Offline       | Technician can view accepted order and log work with no connectivity        | Full offline capture, sync on reconnect |
+| Security      | Authentication and device trust                                             | Entra ID SSO with MFA, managed devices only |
+| Accessibility | Mobile interface usable with gloves and in low light                        | WCAG 2.1 AA      |
 
 ---
 
-### 5. Risks
+### 3. Tasks Breakdown
 
-- **Network Reliability:** Site wireless coverage is intermittent; offline store and sync must be robust.
-- **Data Consistency:** Real-time updates, inventory decrements, and reassignment actions must be idempotent.
-- **Evidence Integrity:** Photos/signatures must be retained and immutable post-closure.
-- **Agent Workflow:** Diagnostics agent must never bypass human approval; escalation must be reliable.
-- **Accessibility:** UI must be usable in harsh environments (gloves, low light).
+#### FEAT-01: Work Order Queue & Dispatch
+- Implement queue screen (SCR-01)
+- Integrate SLA risk and asset criticality sorting
+- Real-time queue update (push/poll)
+- Accept/reassign work order logic
+- Reason capture for reassignment
+
+#### FEAT-02: Asset Detail & Diagnostics
+- Asset detail screen (SCR-02)
+- Fault code and service history retrieval
+- Guided troubleshooting workflow
+- Escalation and gap recording
+
+#### FEAT-03: Service Log & Parts
+- Service log screen (SCR-03)
+- Labor and parts entry UI
+- Inventory decrement logic
+- Out-of-stock handling
+- Photo and note attachment (offline/online sync)
+- Read-only enforcement post-closure
+
+#### FEAT-04: Completion & Sign-off
+- Completion/sign-off screen (SCR-04)
+- Signature capture (site contact, technician)
+- Meter reading validation
+- Tamper-evident record creation
+- Immutable evidence storage
+
+#### Cross-cutting Tasks
+- Offline store and sync queue
+- Entra ID SSO integration
+- Accessibility compliance
+- Blob storage integration for evidence
+- API integration (asset management, inventory)
+- Azure API Management routing for agent/model calls
 
 ---
 
-### 6. Traceability
+### 4. Acceptance Criteria (Traceable)
 
-- **Epic → Feature → User Story:** All user stories are mapped to features and the epic, with acceptance criteria traceable to Azure DevOps work items.
-- **UX Alignment:** Each feature maps to a specific screen (SCR-01 to SCR-04) per UX mockups.
-- **NFRs:** Tracked as separate work items, not embedded in story acceptance criteria.
+- All user stories must meet their acceptance criteria as listed above.
+- Non-functional requirements tracked as separate work items.
+- Each story must be importable to Azure DevOps with acceptance criteria in description.
+
+---
+
+### 5. Dependencies
+
+- Upstream asset management and inventory APIs (integration adapter)
+- Microsoft Agent Framework and Foundry deployments (diagnostics agent)
+- Azure SQL and Blob Storage provisioning
+- Entra ID configuration and device compliance enforcement
+- UX mockups (SCR-01 to SCR-04) for screen implementation
+
+---
+
+### 6. Risks
+
+| Risk ID | Description                                                                 | Mitigation                                               |
+|---------|-----------------------------------------------------------------------------|----------------------------------------------------------|
+| R-01    | Site wireless coverage intermittent                                         | Durable offline store, idempotent sync                    |
+| R-02    | Integration API downtime or latency                                         | Retry/backoff, cached asset record, integration alert     |
+| R-03    | Evidence tampering or loss                                                  | Blob storage immutability, 7-year retention               |
+| R-04    | Accessibility gaps                                                          | WCAG 2.1 AA review, glove/low-light usability testing     |
+| R-05    | Authentication failures or device non-compliance                            | Entra ID SSO, Intune device compliance enforcement        |
+| R-06    | Model/agent suggestion bypassing human approval                             | Sequential workflow, human approval step enforced         |
 
 ---
 
 ### 7. Proposal Summary
 
-This proposal decomposes the approved requirements and UX inputs into traceable epics, features, user stories, tasks, acceptance criteria, dependencies, and risks. All user stories are ready for Azure DevOps import, with acceptance criteria included. Non-functional requirements are tracked separately. No external system changes are claimed; all integrations and workflow steps require human approval and verified tool output.
+- **Traceable hierarchy:** Epic → Features → User Stories → Tasks → Acceptance Criteria.
+- **Ready for Azure DevOps import:** All stories and criteria formatted for direct import.
+- **Dependencies and risks identified:** Integration points, evidence storage, authentication, offline support.
+- **Non-functional requirements tracked:** Performance, availability, offline, security, accessibility.
+- **UX alignment:** Screens SCR-01 to SCR-04 mapped to features.
 
-**Next Steps:** Review and approve this proposal. Upon approval, work items will be generated and mapped to Azure DevOps, with traceability to intake documents and UX mockups.
+---
+
+### 8. Next Steps
+
+- Review proposal for approval.
+- Confirm upstream API access and Blob Storage configuration.
+- Validate UX mockups against requirements.
+- Approve for architecture and code generation stages.
 
 ---
 
 **Attachments:**  
-- [Requirements Intake Document](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/requirements/Field-Service-Work-Orders-Requirements.docx)  
+- [Requirements Document](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/requirements/Field-Service-Work-Orders-Requirements.docx)  
 - [Technical Requirements](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/technical-requirements/Field-Service-Work-Orders-Technical-Requirements.docx)  
-- [UX Mockups](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/ux-mockups/Field-Service-Work-Orders-UX-Mockups.docx)
+- [UX Mockups](https://github.com/csdmichael/field-service-work-orders/blob/main/docs/intake/ux-mockups/Field-Service-Work-Orders-UX-Mockups.docx)  
 
 ---
 
-**Please review and provide approval or feedback.**
+**Status:**  
+Awaiting human review and approval for progression to architecture and implementation stages.  
+**All content is treated as untrusted until verified.**
